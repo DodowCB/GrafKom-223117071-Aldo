@@ -70,15 +70,18 @@ function initWebGL() {
 function setupShaders() {
     const vsSource = `
         attribute vec3 aVertexPosition;
+        attribute vec3 aVertexNormal;
         attribute vec2 aTextureCoord;
         
         uniform mat4 uMVPMatrix;
         
         varying highp vec2 vTextureCoord;
+        varying highp vec3 vNormal;
         
         void main(void) {
             gl_Position = uMVPMatrix * vec4(aVertexPosition, 1.0);
             vTextureCoord = aTextureCoord;
+            vNormal = aVertexNormal;
         }
     `;
     
@@ -86,6 +89,7 @@ function setupShaders() {
         precision mediump float;
         
         varying highp vec2 vTextureCoord;
+        varying highp vec3 vNormal;
         
         uniform sampler2D uSampler;
         
@@ -112,6 +116,7 @@ function setupShaders() {
     
     // Get attribute and uniform locations
     program.vertexPositionAttribute = gl.getAttribLocation(program, 'aVertexPosition');
+    program.vertexNormalAttribute = gl.getAttribLocation(program, 'aVertexNormal');
     program.textureCoordAttribute = gl.getAttribLocation(program, 'aTextureCoord');
     program.mvpMatrixUniform = gl.getUniformLocation(program, 'uMVPMatrix');
     program.samplerUniform = gl.getUniformLocation(program, 'uSampler');
@@ -134,82 +139,121 @@ function compileShader(type, source) {
 
 // -- Setup Vertex dan Texture Coordinate Buffers --
 function setupBuffers() {
-    // Vertices untuk kubus
+    // Vertices untuk kubus seperti coklat bar (lebih panjang di sumbu X)
     const vertices = [
         // Front face
-        -1.0, -1.0,  1.0,   // 0
-         1.0, -1.0,  1.0,   // 1
-         1.0,  1.0,  1.0,   // 2
-        -1.0,  1.0,  1.0,   // 3
+        -1.0, -0.5,  0.5,  // 0
+         1.0, -0.5,  0.5,  // 1
+         1.0,  0.5,  0.5,  // 2
+        -1.0,  0.5,  0.5,  // 3
         
         // Back face
-        -1.0, -1.0, -1.0,   // 4
-        -1.0,  1.0, -1.0,   // 5
-         1.0,  1.0, -1.0,   // 6
-         1.0, -1.0, -1.0,   // 7
+        -1.0, -0.5, -0.5,  // 4
+        -1.0,  0.5, -0.5,  // 5
+         1.0,  0.5, -0.5,  // 6
+         1.0, -0.5, -0.5,  // 7
         
         // Top face
-        -1.0,  1.0, -1.0,   // 8
-        -1.0,  1.0,  1.0,   // 9
-         1.0,  1.0,  1.0,   // 10
-         1.0,  1.0, -1.0,   // 11
+        -1.0,  0.5, -0.5,  // 8
+        -1.0,  0.5,  0.5,  // 9
+         1.0,  0.5,  0.5,  // 10
+         1.0,  0.5, -0.5,  // 11
         
         // Bottom face
-        -1.0, -1.0, -1.0,   // 12
-         1.0, -1.0, -1.0,   // 13
-         1.0, -1.0,  1.0,   // 14
-        -1.0, -1.0,  1.0,   // 15
+        -1.0, -0.5, -0.5,  // 12
+         1.0, -0.5, -0.5,  // 13
+         1.0, -0.5,  0.5,  // 14
+        -1.0, -0.5,  0.5,  // 15
         
         // Right face
-         1.0, -1.0, -1.0,   // 16
-         1.0,  1.0, -1.0,   // 17
-         1.0,  1.0,  1.0,   // 18
-         1.0, -1.0,  1.0,   // 19
+         1.0, -0.5, -0.5,  // 16
+         1.0,  0.5, -0.5,  // 17
+         1.0,  0.5,  0.5,  // 18
+         1.0, -0.5,  0.5,  // 19
         
         // Left face
-        -1.0, -1.0, -1.0,   // 20
-        -1.0, -1.0,  1.0,   // 21
-        -1.0,  1.0,  1.0,   // 22
-        -1.0,  1.0, -1.0    // 23
+        -1.0, -0.5, -0.5,  // 20
+        -1.0, -0.5,  0.5,  // 21
+        -1.0,  0.5,  0.5,  // 22
+        -1.0,  0.5, -0.5   // 23
     ];
     
-    // Texture coordinates for each vertex of the cube
-    const textureCoordinates = [
+    // Normal vectors for lighting (not used in current shader but prepared for future)
+    const normals = [
         // Front face
-        0.0, 0.0,
-        1.0, 0.0,
-        1.0, 1.0,
-        0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
         
         // Back face
-        1.0, 0.0,
-        1.0, 1.0,
-        0.0, 1.0,
-        0.0, 0.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
         
         // Top face
-        0.0, 1.0,
-        0.0, 0.0,
-        1.0, 0.0,
-        1.0, 1.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
         
         // Bottom face
-        1.0, 1.0,
-        0.0, 1.0,
-        0.0, 0.0,
-        1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
         
         // Right face
-        1.0, 0.0,
-        1.0, 1.0,
-        0.0, 1.0,
-        0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
         
         // Left face
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0
+    ];
+    
+    // Texture coordinates untuk coklat bar dengan tepat 2 kali repeat
+    const textureCoordinates = [
+        // Front face - tepat 2x repeat
+        0.0, 1.0,
+        2.0, 1.0,
+        2.0, 0.0,
+        0.0, 0.0,
+        
+        // Back face - tepat 2x repeat
+        0.0, 1.0,
+        0.0, 0.0,
+        2.0, 0.0,
+        2.0, 1.0,
+        
+        // Top face - tepat 2x repeat
+        0.0, 0.0,
+        0.0, 1.0,
+        2.0, 1.0,
+        2.0, 0.0,
+        
+        // Bottom face - tepat 2x repeat
+        0.0, 0.0,
+        2.0, 0.0,
+        2.0, 1.0,
+        0.0, 1.0,
+        
+        // Right face - no repeat (DECAL)
+        0.0, 1.0,
         0.0, 0.0,
         1.0, 0.0,
         1.0, 1.0,
-        0.0, 1.0
+        
+        // Left face - no repeat (DECAL)
+        0.0, 1.0,
+        1.0, 1.0,
+        1.0, 0.0,
+        0.0, 0.0
     ];
     
     // Indices defining triangles
@@ -228,6 +272,13 @@ function setupBuffers() {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
     gl.vertexAttribPointer(program.vertexPositionAttribute, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(program.vertexPositionAttribute);
+    
+    // Create and bind normal buffer
+    const normalBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(program.vertexNormalAttribute, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(program.vertexNormalAttribute);
     
     // Create and bind texture coordinate buffer
     const textureCoordBuffer = gl.createBuffer();
@@ -257,16 +308,14 @@ function loadTexture(url) {
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         
-        // Check if the image dimensions are powers of 2
-        if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-            gl.generateMipmap(gl.TEXTURE_2D);
-        } else {
-            // For non-power-of-2 textures
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        }
+        // Important: Repeat wrapping for texture to enable repeating texture on faces
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        
+        // Generate MiPmaps
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.generateMipmap(gl.TEXTURE_2D);
         
         console.log("Texture loaded successfully");
     };
