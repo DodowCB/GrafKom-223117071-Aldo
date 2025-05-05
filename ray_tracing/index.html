@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Basic Raytracing Demo (Canvas 2D) - Small Sphere</title>
+    <title>Basic Raytracing Demo (Canvas 2D) - Multiple Spheres from JSON</title>
     <style>
         /* Styling untuk container canvas dan info */
         body {
@@ -33,7 +33,24 @@
             background-color: #555;
             border-radius: 5px;
             font-size: 0.9em;
-            text-align: center;
+            text-align: left; /* Info bisa multi-baris, biarkan kiri */
+            max-width: 500px; /* Batasi lebar agar sesuai canvas */
+            width: 100%; /* Ambil lebar maksimum dari parent container */
+            box-sizing: border-box; /* Include padding/border dalam width */
+        }
+        #objectInfo strong {
+            display: block; /* Buat judul info di baris baru */
+            margin-bottom: 5px;
+        }
+        #objectInfo div {
+            margin-bottom: 8px; /* Jarak antar info objek */
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #777; /* Pemisah antar objek */
+        }
+         #objectInfo div:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none; /* Hapus border bawah untuk item terakhir */
         }
     </style>
     <!-- Sertakan gl-matrix untuk operasi vektor/matriks. -->
@@ -48,7 +65,7 @@
 
         <!-- Area untuk menampilkan informasi objek -->
         <div id="objectInfo">
-            Informasi Objek: Memuat...
+            <strong>Informasi Objek Scene:</strong><br>Memuat...
         </div>
     </div>
 
@@ -69,8 +86,6 @@
             // Mengembalikan t value (jarak parameter sepanjang ray) dari perpotongan terdekat,
             // atau -1 jika tidak ada perpotongan positif (di depan ray origin).
             intersect(rayOrigin, rayDirection) {
-                // Implementasi perpotongan spesifik objek (misal: ray-sphere, ray-plane)
-                // Harus mengembalikan t > 0
                 return -1; // Default: tidak ada perpotongan
             }
         }
@@ -86,16 +101,16 @@
             // Implementasi perpotongan ray-sphere (sama seperti sebelumnya)
             intersect(rayOrigin, rayDirection) {
                 const L = vec3.create();
-                vec3.subtract(L, this.center, rayOrigin); // L = C - O
+                vec3.subtract(L, this.center, rayOrigin);
 
-                const a = vec3.dot(rayDirection, rayDirection); // Jika D ternormalisasi, a = 1
+                const a = vec3.dot(rayDirection, rayDirection);
                 const b = -2 * vec3.dot(rayDirection, L);
                 const c = vec3.dot(L, L) - this.radius * this.radius;
 
                 let discriminant = b * b - 4 * a * c;
 
                 if (discriminant < 0) {
-                    return -1; // Tidak ada perpotongan nyata
+                    return -1;
                 }
 
                 let t0 = (-b - Math.sqrt(discriminant)) / (2 * a);
@@ -115,11 +130,60 @@
             }
         }
 
-        // --- Definisi Scene ---
-        const sceneObjects = [
-            // Satu bola merah di pusat koordinat (0,0,0) dengan radius LEBIH KECIL
-            new Sphere([0, 0, 0], 0.3, [255, 0, 0]) // [R, G, B] - Radius diubah dari 1.0 menjadi 0.3
-        ];
+        // --- Konfigurasi Scene dalam bentuk JSON String ---
+        const jsonSceneConfig = `
+        [
+          {
+            "type": "sphere",
+            "center": [0, 0, 0],
+            "radius": 0.3,
+            "color": [255, 0, 0]
+          },
+          {
+            "type": "sphere",
+            "center": [0.5, -0.4, -2.0],
+            "radius": 0.5,
+            "color": [0, 255, 0]
+          }
+        ]
+        `;
+
+        // --- Fungsi untuk Membuat Objek Scene dari JSON ---
+        function createSceneObjects(jsonConfigString) {
+            let config;
+            try {
+                config = JSON.parse(jsonConfigString);
+            } catch (error) {
+                console.error("Gagal mengurai JSON konfigurasi scene:", error);
+                return []; // Kembalikan array kosong jika parsing gagal
+            }
+
+            const objects = [];
+
+            for (const item of config) {
+                if (item.type === "sphere") {
+                    // Validasi minimal: pastikan properti yang dibutuhkan ada
+                    if (item.center && Array.isArray(item.center) && item.center.length === 3 &&
+                        typeof item.radius === 'number' && item.radius > 0 &&
+                        item.color && Array.isArray(item.color) && item.color.length === 3) {
+                         objects.push(new Sphere(item.center, item.radius, item.color));
+                    } else {
+                        console.warn("Melewati objek sphere tidak valid:", item);
+                    }
+                }
+                // Tambahkan tipe objek lain di sini jika diperlukan (misal: plane)
+                // else if (item.type === "plane") { ... }
+                 else {
+                    console.warn("Tipe objek tidak dikenal:", item.type);
+                }
+            }
+
+            return objects;
+        }
+
+        // Buat objek scene berdasarkan konfigurasi JSON
+        const sceneObjects = createSceneObjects(jsonSceneConfig);
+
 
         // --- Pengaturan Kamera ---
         const cameraOrigin = vec3.fromValues(0, 0, 5); // Posisi kamera tetap
@@ -162,6 +226,7 @@
                     let closestT = Infinity;
                     let hitObject = null;
 
+                    // Loop melalui setiap objek di sceneObjects (sekarang diisi dari JSON)
                     for (const object of sceneObjects) {
                         const t = object.intersect(rayOrigin, rayDirection);
                         if (t > 0 && t < closestT) {
@@ -173,6 +238,10 @@
                     let pixelColor;
                     if (hitObject) {
                         pixelColor = hitObject.color;
+                        // Di sini Anda akan menambahkan logika pencahayaan jika diperlukan di masa mendatang
+                        // const hitPoint = vec3.scaleAndAdd(vec3.create(), rayOrigin, rayDirection, closestT);
+                        // const surfaceNormal = hitObject.getNormalAtPoint(hitPoint); // Perlu implementasi metode ini di objek
+                        // ... hitung pencahayaan ...
                     } else {
                         pixelColor = backgroundColor;
                     }
@@ -186,7 +255,7 @@
             }
 
             ctx.putImageData(imageData, 0, 0);
-            console.log("Raytracing selesai.");
+            console.log(`Raytracing selesai. Menggambar ${sceneObjects.length} objek.`);
         }
 
         // --- Fungsi untuk Menampilkan Info Objek ---
@@ -197,48 +266,46 @@
                 return;
             }
 
-            // Asumsi objek pertama di sceneObjects adalah bola yang ingin kita tampilkan infonya
-            const mainSphere = sceneObjects[0]; // Ganti jika ingin menampilkan objek lain
+            // Kosongkan konten sebelumnya
+            infoDiv.innerHTML = '<strong>Informasi Objek Scene:</strong>';
 
-            if (mainSphere && mainSphere instanceof Sphere) {
-                const centerX = mainSphere.center[0].toFixed(2); // Format 2 angka desimal
-                const centerY = mainSphere.center[1].toFixed(2);
-                const centerZ = mainSphere.center[2].toFixed(2);
-                const radius = mainSphere.radius.toFixed(2);
-
-                infoDiv.innerHTML = `
-                    <strong>Informasi Objek:</strong><br>
-                    Tipe: Bola (Sphere)<br>
-                    Posisi (Center): (${centerX}, ${centerY}, ${centerZ})<br>
-                    Jari-jari (Radius): ${radius}
-                `;
-            } else {
-                infoDiv.textContent = "Informasi objek tidak tersedia atau objek pertama bukan bola.";
+            if (sceneObjects.length === 0) {
+                 infoDiv.innerHTML += '<br>Tidak ada objek dalam scene.';
+                 return;
             }
+
+            // Iterasi melalui SEMUA objek di sceneObjects
+            sceneObjects.forEach((object, index) => {
+                const objectEntryDiv = document.createElement('div');
+                let infoText = `Objek ${index + 1}: `; // Beri nomor objek
+
+                if (object instanceof Sphere) {
+                    const centerX = object.center[0].toFixed(2);
+                    const centerY = object.center[1].toFixed(2);
+                    const centerZ = object.center[2].toFixed(2);
+                    const radius = object.radius.toFixed(2);
+                    const color = object.color.join(', ');
+
+                    infoText += `Bola (Sphere)<br>
+                                Posisi (Center): (${centerX}, ${centerY}, ${centerZ})<br>
+                                Jari-jari (Radius): ${radius}<br>
+                                Warna (RGB): (${color})`;
+                } else {
+                    // Tangani tipe objek lain jika ada
+                    infoText += `Tipe tidak dikenal`;
+                }
+                 objectEntryDiv.innerHTML = infoText;
+                 infoDiv.appendChild(objectEntryDiv);
+            });
         }
 
 
         // Jalankan fungsi raytrace dan displayObjectInfo saat halaman selesai dimuat
         window.onload = () => {
+            // sceneObjects sudah dibuat saat script dimuat
             raytrace();
             displayObjectInfo(); // Panggil setelah objek sceneObjects didefinisikan
         };
-
-        // --- Contoh Cara Menambahkan Objek Lain di Masa Depan (sama seperti sebelumnya) ---
-        /*
-        function addAnotherObject() {
-            const greenSphere = new Sphere([-0.8, 0.5, -0.5], 0.4, [0, 255, 0]);
-            sceneObjects.push(greenSphere);
-
-            const blueSphere = new Sphere([0.6, -0.7, -1.0], 0.3, [0, 0, 255]);
-            sceneObjects.push(blueSphere);
-
-            // Jika sceneObjects berubah, Anda mungkin perlu memanggil raytrace() lagi
-            raytrace();
-            // Dan jika ingin menampilkan info objek lain, panggil displayObjectInfo() lagi
-            // displayObjectInfo(); // Ini mungkin hanya menampilkan info objek pertama
-        }
-        */
 
     </script>
 
