@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Raytracing Demo (Canvas 2D) - Phong Lighting</title>
+    <style>
+        /* Styling untuk container canvas dan info */
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center; /* Tengahkan container secara horizontal */
+            align-items: center; /* Tengahkan container secara vertikal */
+            min-height: 100vh; /* Pastikan body minimal setinggi viewport */
+            background-color: #333; /* Warna latar belakang */
+            flex-direction: column; /* Tumpuk item secara vertikal */
+            font-family: sans-serif; /* Font lebih mudah dibaca */
+            color: #eee; /* Warna teks untuk info */
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Pusatkan item di dalam container */
+        }
+        canvas {
+            border: 1px solid #ccc; /* Border agar canvas terlihat */
+            display: block; /* Penting untuk menghilangkan margin bawah bawaan inline/inline-block */
+        }
+        #objectInfo {
+            margin-top: 10px; /* Jarak antara canvas dan info */
+            padding: 10px;
+            background-color: #555;
+            border-radius: 5px;
+            font-size: 0.9em;
+            text-align: left; /* Info bisa multi-baris, biarkan kiri */
+            max-width: 500px; /* Batasi lebar agar sesuai canvas */
+            width: 100%; /* Ambil lebar maksimum dari parent container */
+            box-sizing: border-box; /* Include padding/border dalam width */
+        }
+        #objectInfo strong {
+            display: block; /* Buat judul info di baris baru */
+            margin-bottom: 5px;
+        }
+        #objectInfo div {
+            margin-bottom: 8px; /* Jarak antar info objek */
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #777; /* Pemisah antar objek */
+        }
+         #objectInfo div:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none; /* Hapus border bawah untuk item terakhir */
+        }
+    </style>
+    <!-- Sertakan gl-matrix untuk operasi vektor/matriks. -->
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix-min.js"></script>
+</head>
+<body>
+
+    <!-- Container untuk canvas dan info agar mudah ditata -->
+    <div id="container">
+        <!-- Canvas untuk rendering -->
+        <canvas id="raytraceCanvas" width="500" height="500"></canvas>
+
+        <!-- Area untuk menampilkan informasi objek -->
+        <div id="objectInfo">
+            <strong>Informasi Scene:</strong><br>Memuat...
+        </div>
+    </div>
+
+
+    <script>
+        // Gunakan namespace glMatrix untuk kemudahan akses
+        const vec3 = glMatrix.vec3;
+
+        // --- Definisi Objek di Scene ---
+
+        // Class dasar untuk objek yang bisa di-raytrace
+        class SceneObject {
+            // Tambahkan properti material dasar ke base class
+            constructor(color, specularColor = [255, 255, 255], shininess = 30.0) {
+                // Warna dasar objek, digunakan untuk ambient dan diffuse
+                this.color = vec3.fromValues(...color);
+                // Warna pantulan specular
+                this.specularColor = vec3.fromValues(...specularColor);
+                // Eksponen shininess untuk mengontrol kekasaran specular
+                this.shininess = shininess;
+            }
+
+            // Metode ini harus diimplementasikan oleh turunan (misal: Sphere)
+            // Mengembalikan t value (jarak parameter sepanjang ray) dari perpotongan terdekat,
+            // atau -1 jika tidak ada perpotongan positif (di depan ray origin).
+            intersect(rayOrigin, rayDirection) {
+                return -1; // Default: tidak ada perpotongan
+            }
+
+            // Metode ini harus diimplementasikan oleh turunan
+            // Mengembalikan vektor normal (ternormalisasi) di titik perpotongan P
+            getNormalAtPoint(point) {
+                 // Implementasi spesifik objek
+                 return vec3.fromValues(0, 1, 0); // Contoh normal default (tidak benar untuk semua objek)
+            }
+        }
+
+        // Objek Bola (Sphere)
+        class Sphere extends SceneObject {
+            constructor(center, radius, color, specularColor, shininess) {
+                // Panggil constructor base class dengan properti material
+                super(color, specularColor, shininess);
+                this.center = vec3.fromValues(...center); // Gunakan vec3 dari gl-matrix
+                this.radius = radius;
+            }
+
+            // Implementasi perpotongan ray-sphere (sama seperti sebelumnya)
+            intersect(rayOrigin, rayDirection) {
+                const L = vec3.create();
+                vec3.subtract(L, this.center, rayOrigin); // L = C - O
+
+                const a = vec3.dot(rayDirection, rayDirection); // Jika D ternormalisasi, a = 1
+                const b = -2 * vec3.dot(rayDirection, L);
+                const c = vec3.dot(L, L) - this.radius * this.radius;
+
+                let discriminant = b * b - 4 * a * c;
+
+                if (discriminant < 0) {
+                    return -1; // Tidak ada perpotongan nyata
+                }
+
+                let t0 = (-b - Math.sqrt(discriminant)) / (2 * a);
+                let t1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+
+                const epsilon = 0.0001; // Untuk mengatasi masalah floating point
+
+                if (t0 > epsilon) {
+                    return t0; // t0 adalah perpotongan positif terdekat
+                }
+
+                if (t1 > epsilon) {
+                    return t1; // t0 <= epsilon, t1 mungkin positif (jika origin di dalam bola)
+                }
+
+                return -1; // Kedua perpotongan negatif atau nol (atau terlalu kecil)
+            }
+
+            // Implementasi metode getNormalAtPoint untuk Bola
+            getNormalAtPoint(point) {
+                const normal = vec3.create();
+                // Untuk bola, normal di titik P adalah vektor ternormalisasi dari pusat C ke P
+                vec3.subtract(normal, point, this.center); // P - C
+                vec3.normalize(normal, normal); // Normalisasi
+                return normal;
+            }
+        }
+
+        // --- Konfigurasi Scene dalam bentuk JSON String (KOMENTAR DIHAPUS DARI DALAM STRING) ---
+        const jsonSceneConfig = `
+        [
+          {
+            "type": "sphere",
+            "center": [0, 0, 0],
+            "radius": 0.3,
+            "color": [255, 0, 0],
+            "specularColor": [255, 255, 255],
+            "shininess": 50.0
+          },
+          {
+            "type": "sphere",
+            "center": [0.5, -0.4, -2.0],
+            "radius": 0.5,
+            "color": [0, 255, 0],
+            "specularColor": [200, 200, 200],
+            "shininess": 20.0
+          }
+        ]
+        `;
+
+        // --- Fungsi untuk Membuat Objek Scene dari JSON ---
+        function createSceneObjects(jsonConfigString) {
+            let config;
+            try {
+                config = JSON.parse(jsonConfigString);
+            } catch (error) {
+                console.error("Gagal mengurai JSON konfigurasi scene:", error);
+                // Throw error lagi atau kembalikan null/[] jika Anda ingin penanganan lebih lanjut
+                throw error; // Penting: hentikan eksekusi jika konfigurasi JSON salah
+            }
+
+            const objects = [];
+
+            for (const item of config) {
+                if (item.type === "sphere") {
+                    // Validasi dasar: pastikan properti center, radius, color ada
+                    if (item.center && Array.isArray(item.center) && item.center.length === 3 &&
+                        typeof item.radius === 'number' && item.radius > 0 &&
+                        item.color && Array.isArray(item.color) && item.color.length === 3) {
+
+                        // Properti specularColor dan shininess bersifat opsional, gunakan default jika tidak ada
+                        const specularColor = item.specularColor && Array.isArray(item.specularColor) && item.specularColor.length === 3
+                                              ? item.specularColor : [255, 255, 255]; // Default putih
+                        const shininess = typeof item.shininess === 'number' && item.shininess >= 0
+                                          ? item.shininess : 30.0; // Default 30
+
+                         objects.push(new Sphere(item.center, item.radius, item.color, specularColor, shininess));
+                    } else {
+                        console.warn("Melewati objek sphere tidak valid:", item);
+                    }
+                }
+                // Tambahkan tipe objek lain di sini jika diperlukan (misal: plane)
+                // else if (item.type === "plane") { ... }
+                 else {
+                    console.warn("Tipe objek tidak dikenal:", item.type);
+                }
+            }
+
+            return objects;
+        }
+
+        // Buat objek scene berdasarkan konfigurasi JSON
+        // Pastikan ini ada di scope global atau diakses setelah createSceneObjects dijalankan
+        let sceneObjects = []; // Inisialisasi dengan array kosong dulu
+        try {
+             sceneObjects = createSceneObjects(jsonSceneConfig);
+        } catch (e) {
+            console.error("Startup failed due to invalid scene configuration.");
+            // Anda bisa menambahkan UI error message di sini
+        }
+
+
+        // --- Pengaturan Kamera ---
+        const cameraOrigin = vec3.fromValues(0, 0, 5); // Posisi kamera tetap
+        const screenPlaneWidth = 2.0; // Ukuran bidang layar tetap
+        const screenPlaneHeight = 2.0; // Ukuran bidang layar tetap
+        const screenPlaneZ = 0.0; // Jarak bidang layar dari origin scene
+
+        // Warna latar belakang jika ray tidak mengenai objek apapun
+        const backgroundColor = [50, 50, 50]; // Abu-abu gelap
+
+        // --- Pengaturan Pencahayaan ---
+        // Cahaya Ambient Global
+        const ambientLight = {
+            color: vec3.fromValues(50, 50, 50) // Intensitas/warna cahaya ambient (Abu-abu)
+        };
+
+        // Daftar Cahaya Point (Cahaya dari satu titik)
+        const lights = [
+            {
+                position: vec3.fromValues(2, 3, 4), // Posisi sumber cahaya pertama
+                color: vec3.fromValues(255, 255, 255) // Warna/intensitas cahaya pertama (Putih)
+            }
+            // Anda bisa tambahkan sumber cahaya lain di sini
+            /*
+            ,{
+                position: vec3.fromValues(-3, -1, 3),
+                color: vec3.fromValues(100, 100, 255) // Cahaya kedua (Kebiruan)
+            }
+            */
+        ];
+
+        // --- Fungsi untuk Menghitung Pencahayaan Phong ---
+        // Menghitung warna akhir di titik perpotongan menggunakan model Phong
+        // hitPoint: vec3, titik perpotongan di permukaan objek
+        // normal: vec3, vektor normal (ternormalisasi) di hitPoint
+        // viewDirection: vec3, vektor (ternormalisasi) dari hitPoint ke kamera
+        // material: Objek/properti material dari objek yang terkena (misal: instance Sphere)
+        // ambientLight: Objek konfigurasi cahaya ambient
+        // lights: Array objek konfigurasi cahaya point
+        function calculatePhongLighting(hitPoint, normal, viewDirection, material, ambientLight, lights) {
+            const finalColor = vec3.create();
+            vec3.set(finalColor, 0, 0, 0); // Inisialisasi dengan warna hitam [0, 0, 0]
+
+            // --- Konversi Warna Material & Ambient Light ke Rentang [0, 1] ---
+            const materialColor01 = vec3.create();
+            vec3.scale(materialColor01, material.color, 1/255.0); // material.color [0-255] -> [0-1]
+
+            const materialSpecularColor01 = vec3.create();
+            vec3.scale(materialSpecularColor01, material.specularColor, 1/255.0); // material.specularColor [0-255] -> [0-1]
+
+            const ambientLightColor01 = vec3.create();
+            vec3.scale(ambientLightColor01, ambientLight.color, 1/255.0); // ambientLight.color [0-255] -> [0-1]
+
+
+            // --- 1. Komponen Ambient (sudah dalam [0, 1] setelah konversi input) ---
+            // ambient = ambientLightColor01 * materialColor01 (per komponen)
+            const ambient = vec3.create();
+            vec3.mul(ambient, ambientLightColor01, materialColor01); // Perkalian per komponen di rentang [0, 1]
+
+            vec3.add(finalColor, finalColor, ambient); // Tambahkan ambient (dalam [0, 1]) ke warna akhir (dalam [0, 1])
+
+            // --- 2 & 3. Komponen Diffuse dan Specular dari Setiap Cahaya ---
+            for (const light of lights) {
+                // Konversi Warna Light ke Rentang [0, 1]
+                const lightColor01 = vec3.create();
+                vec3.scale(lightColor01, light.color, 1/255.0); // light.color [0-255] -> [0-1]
+
+                // Hitung arah dari titik perpotongan ke sumber cahaya
+                const lightDirection = vec3.create();
+                vec3.subtract(lightDirection, light.position, hitPoint);
+                vec3.normalize(lightDirection, lightDirection); // Normalisasi
+
+                // --- Komponen Diffuse ---
+                // diffuse = lightColor01 * materialColor01 * max(0, dot(N, L))
+                const diffuse = vec3.create();
+                const diffuseFactor = Math.max(0.0, vec3.dot(normal, lightDirection));
+
+                // lightColor01 * materialColor01 (per komponen)
+                const lightDiffuse01 = vec3.create(); // Temp var untuk perkalian warna
+                vec3.mul(lightDiffuse01, lightColor01, materialColor01); // Perkalian per komponen di rentang [0, 1]
+
+                // Kalikan dengan faktor diffuse (hasil tetap di rentang [0, 1])
+                vec3.scale(diffuse, lightDiffuse01, diffuseFactor);
+
+                vec3.add(finalColor, finalColor, diffuse); // Tambahkan diffuse (dalam [0, 1]) ke warna akhir (dalam [0, 1])
+
+                // --- Komponen Specular ---
+                // specular = lightColor01 * materialSpecularColor01 * pow(max(0, dot(N, H)), shininess)
+                // H (Half Vector) = normalize(L + V)
+                const halfVector = vec3.create();
+                vec3.add(halfVector, lightDirection, viewDirection);
+                // Handle kasus L+V adalah zero vector
+                // Ganti vec3.lenSq dengan vec3.squaredLength atau vec3.sqrLen
+                if (vec3.squaredLength(halfVector) > 1e-6) { // Perbaikan dari error sebelumnya
+                    vec3.normalize(halfVector, halfVector); // Normalisasi Half Vector
+                } else {
+                    vec3.copy(halfVector, normal); // Fallback
+                }
+
+                const specular = vec3.create();
+                const NdH = vec3.dot(normal, halfVector);
+                const specularFactor = Math.pow(Math.max(0.0, NdH), material.shininess);
+
+                // lightColor01 * materialSpecularColor01 (per komponen)
+                const lightSpecular01 = vec3.create(); // Temp var
+                vec3.mul(lightSpecular01, lightColor01, materialSpecularColor01); // Perkalian per komponen di rentang [0, 1]
+
+                // Kalikan dengan faktor specular (hasil tetap di rentang [0, 1])
+                vec3.scale(specular, lightSpecular01, specularFactor);
+
+                vec3.add(finalColor, finalColor, specular); // Tambahkan specular (dalam [0, 1]) ke warna akhir (dalam [0, 1])
+            }
+
+            // --- 4. Hasil Akhir ---
+            // finalColor sekarang dalam rentang [0, 1]. Kalikan dengan 255 untuk rentang output.
+            vec3.scale(finalColor, finalColor, 255.0);
+
+            // Pastikan nilai warna dalam rentang [0, 255]
+            vec3.min(finalColor, finalColor, vec3.fromValues(255, 255, 255)); // Clamp max to 255
+            vec3.max(finalColor, finalColor, vec3.fromValues(0, 0, 0));     // Clamp min to 0
+
+            return finalColor; // Mengembalikan vec3
+        }
+
+
+        // --- Fungsi Raytracing Utama (diperbarui untuk lighting) ---
+        function raytrace() {
+            const canvas = document.getElementById('raytraceCanvas');
+            if (!canvas || sceneObjects.length === 0) {
+                if (!canvas) console.error("Elemen canvas tidak ditemukan!");
+                if (sceneObjects.length === 0) console.warn("Tidak ada objek untuk digambar.");
+                const ctx = canvas ? canvas.getContext('2d') : null;
+                 if(ctx) { // Clear canvas if no objects
+                    ctx.fillStyle = `rgb(${backgroundColor.join(',')})`;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                 }
+                return; // Berhenti jika tidak ada canvas atau objek
+            }
+            const ctx = canvas.getContext('2d');
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+
+            const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+            const data = imageData.data;
+
+            for (let y = 0; y < canvasHeight; y++) {
+                for (let x = 0; x < canvasWidth; x++) {
+
+                    const normX = x / canvasWidth;
+                    const normY = y / canvasHeight;
+
+                    const screenX = normX * screenPlaneWidth - screenPlaneWidth / 2;
+                    const screenY = screenPlaneHeight / 2 - normY * screenPlaneHeight; // Inverted Y
+                    const screenPoint = vec3.fromValues(screenX, screenY, screenPlaneZ);
+
+                    const rayOrigin = cameraOrigin;
+                    const rayDirection = vec3.create();
+                    vec3.subtract(rayDirection, screenPoint, rayOrigin);
+                    vec3.normalize(rayDirection, rayDirection);
+
+                    let closestT = Infinity;
+                    let hitObject = null;
+
+                    for (const object of sceneObjects) {
+                        const t = object.intersect(rayOrigin, rayDirection);
+                        if (t > 0 && t < closestT) {
+                            closestT = t;
+                            hitObject = object;
+                        }
+                    }
+
+                    let pixelColor; // Ini akan menjadi array [R, G, B]
+                    if (hitObject) {
+                        // Ray mengenai objek, hitung pencahayaan Phong
+                        // Titik perpotongan: O + t * D
+                        const hitPoint = vec3.create();
+                        vec3.scaleAndAdd(hitPoint, rayOrigin, rayDirection, closestT);
+
+                        // Normal di titik perpotongan
+                        const surfaceNormal = hitObject.getNormalAtPoint(hitPoint); // Memanggil metode getNormalAtPoint()
+
+                        // Arah pandang dari titik perpotongan ke kamera
+                        const viewDirection = vec3.create();
+                        vec3.subtract(viewDirection, cameraOrigin, hitPoint);
+                        vec3.normalize(viewDirection, viewDirection); // Normalisasi
+
+                        // Hitung warna piksel menggunakan model pencahayaan Phong
+                        const lightedColorVec = calculatePhongLighting(
+                            hitPoint,
+                            surfaceNormal,
+                            viewDirection,
+                            hitObject, // Objek itu sendiri berisi properti material
+                            ambientLight,
+                            lights
+                        );
+
+                        // Konversi warna dari vec3 (float) kembali ke array [R, G, B] integer [0-255]
+                        pixelColor = [
+                            Math.round(lightedColorVec[0]),
+                            Math.round(lightedColorVec[1]),
+                            Math.round(lightedColorVec[2])
+                        ];
+
+                    } else {
+                        // Ray tidak mengenai objek, gunakan warna latar belakang
+                        pixelColor = backgroundColor;
+                    }
+
+                    // Set warna piksel di ImageData
+                    const pixelIndex = (y * canvasWidth + x) * 4; // Indeks awal untuk piksel (x, y) di array data
+                    data[pixelIndex + 0] = pixelColor[0]; // Komponen Merah
+                    data[pixelIndex + 1] = pixelColor[1]; // Komponen Hijau
+                    data[pixelIndex + 2] = pixelColor[2]; // Komponen Biru
+                    data[pixelIndex + 3] = 255;          // Komponen Alpha (Opaque penuh)
+                }
+            }
+
+            // Tampilkan ImageData ke canvas
+            ctx.putImageData(imageData, 0, 0);
+            console.log(`Raytracing selesai. Menggambar ${sceneObjects.length} objek dengan Phong lighting.`);
+        }
+
+        // --- Fungsi untuk Menampilkan Info Scene (Objek dan Cahaya) ---
+        // Diperbarui untuk menampilkan properti material dan cahaya
+        function displaySceneInfo() {
+            const infoDiv = document.getElementById('objectInfo');
+            if (!infoDiv) {
+                console.error("Elemen infoDiv tidak ditemukan!");
+                return;
+            }
+
+            // Kosongkan konten sebelumnya
+            infoDiv.innerHTML = '<strong>Informasi Scene:</strong>';
+
+            // Info Objek
+             infoDiv.innerHTML += '<br><strong>Objek:</strong>';
+            if (sceneObjects.length === 0) {
+                 infoDiv.innerHTML += '<br>Tidak ada objek dalam scene.';
+            } else {
+
+                sceneObjects.forEach((object, index) => {
+                    const objectEntryDiv = document.createElement('div');
+                    let infoText = `Objek ${index + 1}: `; // Beri nomor objek
+
+                    if (object instanceof Sphere) {
+                        const centerX = object.center[0].toFixed(2);
+                        const centerY = object.center[1].toFixed(2);
+                        const centerZ = object.center[2].toFixed(2);
+                        const radius = object.radius.toFixed(2);
+                        // Gunakan komponen vec3, bulatkan untuk tampilan
+                        const color = [Math.round(object.color[0]), Math.round(object.color[1]), Math.round(object.color[2])].join(', ');
+                        const specularColor = [Math.round(object.specularColor[0]), Math.round(object.specularColor[1]), Math.round(object.specularColor[2])].join(', ');
+                        const shininess = object.shininess.toFixed(1); // 1 angka desimal untuk shininess
+
+                        infoText += `Bola (Sphere)<br>
+                                    Posisi (Center): (${centerX}, ${centerY}, ${centerZ})<br>
+                                    Jari-jari (Radius): ${radius}<br>
+                                    Warna Dasar (RGB): (${color})<br>
+                                    Warna Spekular (RGB): (${specularColor})<br>
+                                    Shininess: ${shininess}`;
+                    } else {
+                        // Tangani tipe objek lain jika ada
+                        infoText += `Tipe tidak dikenal`;
+                    }
+                     objectEntryDiv.innerHTML = infoText;
+                     infoDiv.appendChild(objectEntryDiv);
+                });
+            }
+
+
+            // Info Cahaya
+            const lightInfoDiv = document.createElement('div');
+            lightInfoDiv.innerHTML = `<strong>Cahaya:</strong><br>
+                Ambient Light (RGB): (${Math.round(ambientLight.color[0])}, ${Math.round(ambientLight.color[1])}, ${Math.round(ambientLight.color[2])})`;
+
+            lights.forEach((light, index) => {
+                 lightInfoDiv.innerHTML += `<br>Point Light ${index + 1} (RGB): (${Math.round(light.color[0])}, ${Math.round(light.color[1])}, ${Math.round(light.color[2])})<br>
+                    Posisi: (${light.position[0].toFixed(2)}, ${light.position[1].toFixed(2)}, ${light.position[2].toFixed(2)})`;
+            });
+            infoDiv.appendChild(lightInfoDiv);
+
+        }
+
+
+        // Jalankan fungsi raytrace dan displayObjectInfo saat halaman selesai dimuat
+        window.onload = () => {
+            // sceneObjects sudah dibuat di atas, panggil fungsinya di sini
+            raytrace();
+            displaySceneInfo(); // Ganti nama fungsi info
+        };
+
+    </script>
+
+</body>
+</html>
