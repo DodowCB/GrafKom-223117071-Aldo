@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Raytracing Demo (Canvas 2D) - Small Sphere</title>
+    <style>
+        /* Styling untuk container canvas dan info */
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center; /* Tengahkan container secara horizontal */
+            align-items: center; /* Tengahkan container secara vertikal */
+            min-height: 100vh; /* Pastikan body minimal setinggi viewport */
+            background-color: #333; /* Warna latar belakang */
+            flex-direction: column; /* Tumpuk item secara vertikal */
+            font-family: sans-serif; /* Font lebih mudah dibaca */
+            color: #eee; /* Warna teks untuk info */
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Pusatkan item di dalam container */
+        }
+        canvas {
+            border: 1px solid #ccc; /* Border agar canvas terlihat */
+            display: block; /* Penting untuk menghilangkan margin bawah bawaan inline/inline-block */
+        }
+        #objectInfo {
+            margin-top: 10px; /* Jarak antara canvas dan info */
+            padding: 10px;
+            background-color: #555;
+            border-radius: 5px;
+            font-size: 0.9em;
+            text-align: center;
+        }
+    </style>
+    <!-- Sertakan gl-matrix untuk operasi vektor/matriks. -->
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix-min.js"></script>
+</head>
+<body>
+
+    <!-- Container untuk canvas dan info agar mudah ditata -->
+    <div id="container">
+        <!-- Canvas untuk rendering -->
+        <canvas id="raytraceCanvas" width="500" height="500"></canvas>
+
+        <!-- Area untuk menampilkan informasi objek -->
+        <div id="objectInfo">
+            Informasi Objek: Memuat...
+        </div>
+    </div>
+
+
+    <script>
+        // Gunakan namespace glMatrix untuk kemudahan akses
+        const vec3 = glMatrix.vec3;
+
+        // --- Definisi Objek di Scene ---
+
+        // Class dasar untuk objek yang bisa di-raytrace
+        class SceneObject {
+            constructor(color) {
+                this.color = color; // [r, g, b] format
+            }
+
+            // Metode ini harus diimplementasikan oleh turunan (misal: Sphere)
+            // Mengembalikan t value (jarak parameter sepanjang ray) dari perpotongan terdekat,
+            // atau -1 jika tidak ada perpotongan positif (di depan ray origin).
+            intersect(rayOrigin, rayDirection) {
+                // Implementasi perpotongan spesifik objek (misal: ray-sphere, ray-plane)
+                // Harus mengembalikan t > 0
+                return -1; // Default: tidak ada perpotongan
+            }
+        }
+
+        // Objek Bola (Sphere)
+        class Sphere extends SceneObject {
+            constructor(center, radius, color) {
+                super(color);
+                this.center = vec3.fromValues(...center); // Gunakan vec3 dari gl-matrix
+                this.radius = radius;
+            }
+
+            // Implementasi perpotongan ray-sphere (sama seperti sebelumnya)
+            intersect(rayOrigin, rayDirection) {
+                const L = vec3.create();
+                vec3.subtract(L, this.center, rayOrigin); // L = C - O
+
+                const a = vec3.dot(rayDirection, rayDirection); // Jika D ternormalisasi, a = 1
+                const b = -2 * vec3.dot(rayDirection, L);
+                const c = vec3.dot(L, L) - this.radius * this.radius;
+
+                let discriminant = b * b - 4 * a * c;
+
+                if (discriminant < 0) {
+                    return -1; // Tidak ada perpotongan nyata
+                }
+
+                let t0 = (-b - Math.sqrt(discriminant)) / (2 * a);
+                let t1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+
+                const epsilon = 0.0001;
+
+                if (t0 > epsilon) {
+                    return t0;
+                }
+
+                if (t1 > epsilon) {
+                    return t1;
+                }
+
+                return -1;
+            }
+        }
+
+        // --- Definisi Scene ---
+        const sceneObjects = [
+            // Satu bola merah di pusat koordinat (0,0,0) dengan radius LEBIH KECIL
+            new Sphere([0, 0, 0], 0.3, [255, 0, 0]) // [R, G, B] - Radius diubah dari 1.0 menjadi 0.3
+        ];
+
+        // --- Pengaturan Kamera ---
+        const cameraOrigin = vec3.fromValues(0, 0, 5); // Posisi kamera tetap
+        const screenPlaneWidth = 2.0; // Ukuran bidang layar tetap
+        const screenPlaneHeight = 2.0; // Ukuran bidang layar tetap
+        const screenPlaneZ = 0.0; // Jarak bidang layar tetap
+
+        // Warna latar belakang jika ray tidak mengenai objek apapun
+        const backgroundColor = [50, 50, 50]; // Abu-abu gelap
+
+        // --- Fungsi Raytracing Utama ---
+        function raytrace() {
+            const canvas = document.getElementById('raytraceCanvas');
+            if (!canvas) {
+                console.error("Elemen canvas tidak ditemukan!");
+                return;
+            }
+            const ctx = canvas.getContext('2d');
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+
+            const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+            const data = imageData.data;
+
+            for (let y = 0; y < canvasHeight; y++) {
+                for (let x = 0; x < canvasWidth; x++) {
+
+                    const normX = x / canvasWidth;
+                    const normY = y / canvasHeight;
+
+                    const screenX = normX * screenPlaneWidth - screenPlaneWidth / 2;
+                    const screenY = screenPlaneHeight / 2 - normY * screenPlaneHeight; // Inverted Y
+                    const screenPoint = vec3.fromValues(screenX, screenY, screenPlaneZ);
+
+                    const rayOrigin = cameraOrigin;
+                    const rayDirection = vec3.create();
+                    vec3.subtract(rayDirection, screenPoint, rayOrigin);
+                    vec3.normalize(rayDirection, rayDirection);
+
+                    let closestT = Infinity;
+                    let hitObject = null;
+
+                    for (const object of sceneObjects) {
+                        const t = object.intersect(rayOrigin, rayDirection);
+                        if (t > 0 && t < closestT) {
+                            closestT = t;
+                            hitObject = object;
+                        }
+                    }
+
+                    let pixelColor;
+                    if (hitObject) {
+                        pixelColor = hitObject.color;
+                    } else {
+                        pixelColor = backgroundColor;
+                    }
+
+                    const pixelIndex = (y * canvasWidth + x) * 4;
+                    data[pixelIndex + 0] = pixelColor[0];
+                    data[pixelIndex + 1] = pixelColor[1];
+                    data[pixelIndex + 2] = pixelColor[2];
+                    data[pixelIndex + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            console.log("Raytracing selesai.");
+        }
+
+        // --- Fungsi untuk Menampilkan Info Objek ---
+        function displayObjectInfo() {
+            const infoDiv = document.getElementById('objectInfo');
+            if (!infoDiv) {
+                console.error("Elemen infoDiv tidak ditemukan!");
+                return;
+            }
+
+            // Asumsi objek pertama di sceneObjects adalah bola yang ingin kita tampilkan infonya
+            const mainSphere = sceneObjects[0]; // Ganti jika ingin menampilkan objek lain
+
+            if (mainSphere && mainSphere instanceof Sphere) {
+                const centerX = mainSphere.center[0].toFixed(2); // Format 2 angka desimal
+                const centerY = mainSphere.center[1].toFixed(2);
+                const centerZ = mainSphere.center[2].toFixed(2);
+                const radius = mainSphere.radius.toFixed(2);
+
+                infoDiv.innerHTML = `
+                    <strong>Informasi Objek:</strong><br>
+                    Tipe: Bola (Sphere)<br>
+                    Posisi (Center): (${centerX}, ${centerY}, ${centerZ})<br>
+                    Jari-jari (Radius): ${radius}
+                `;
+            } else {
+                infoDiv.textContent = "Informasi objek tidak tersedia atau objek pertama bukan bola.";
+            }
+        }
+
+
+        // Jalankan fungsi raytrace dan displayObjectInfo saat halaman selesai dimuat
+        window.onload = () => {
+            raytrace();
+            displayObjectInfo(); // Panggil setelah objek sceneObjects didefinisikan
+        };
+
+        // --- Contoh Cara Menambahkan Objek Lain di Masa Depan (sama seperti sebelumnya) ---
+        /*
+        function addAnotherObject() {
+            const greenSphere = new Sphere([-0.8, 0.5, -0.5], 0.4, [0, 255, 0]);
+            sceneObjects.push(greenSphere);
+
+            const blueSphere = new Sphere([0.6, -0.7, -1.0], 0.3, [0, 0, 255]);
+            sceneObjects.push(blueSphere);
+
+            // Jika sceneObjects berubah, Anda mungkin perlu memanggil raytrace() lagi
+            raytrace();
+            // Dan jika ingin menampilkan info objek lain, panggil displayObjectInfo() lagi
+            // displayObjectInfo(); // Ini mungkin hanya menampilkan info objek pertama
+        }
+        */
+
+    </script>
+
+</body>
+</html>
