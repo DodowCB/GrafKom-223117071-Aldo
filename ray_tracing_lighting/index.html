@@ -47,17 +47,38 @@
             padding-bottom: 8px;
             border-bottom: 1px dashed #777; /* Pemisah antar objek */
         }
-         #objectInfo div:last-child {
+        #objectInfo div:last-child {
             margin-bottom: 0;
             padding-bottom: 0;
             border-bottom: none; /* Hapus border bawah untuk item terakhir */
         }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 8px 16px;
+            background-color: white;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        .back-button:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
     </style>
+    <link rel="icon" href="../icon.jpg" type="image/x-icon">
+
     <!-- Sertakan gl-matrix untuk operasi vektor/matriks. -->
     <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix-min.js"></script>
 </head>
 <body>
-
+    <a href="../index.html" class="back-button">← Back to Projects</a>
     <!-- Container untuk canvas dan info agar mudah ditata -->
     <div id="container">
         <!-- Canvas untuk rendering -->

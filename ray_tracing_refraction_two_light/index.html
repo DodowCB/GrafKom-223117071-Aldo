@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raytracer - Refleksi & Refraksi</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; background-color: #f0f0f0; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
+        .main-container { display: flex; flex-direction: column; flex-grow: 1; width: 100%; }
+        .canvas-container { flex-grow: 1; display: flex; justify-content: center; align-items: center; background-color: #333; padding: 10px; min-height: 300px; }
+        #raytraceCanvas { border: 1px solid #555; max-width: 100%; max-height: 100%; }
+        .controls-panel { width: 100%; padding: 15px; background-color: #e9e9e9; box-sizing: border-box; overflow-y: auto; max-height: 100vh; }
+        .controls-panel h2, .controls-panel h3 { margin-top: 0; margin-bottom: 10px; color: #1a1a1a; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        .control-group { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #ddd; }
+        .control-group:last-child { border-bottom: none; }
+        .control-group label { display: block; margin-bottom: 3px; font-size: 0.9em; }
+        /* Adjust slider width to make space for label and output */
+        .control-group input[type="range"] { width: calc(100% - 120px); margin-right: 10px; vertical-align: middle; }
+         .control-group input[type="number"] { width: 50px; } /* Adjust width for number inputs */
+        .control-group input[type="color"] { width: 50px; height: 25px; padding: 0; border: 1px solid #ccc; vertical-align: middle;}
+        .control-group output { font-size: 0.9em; vertical-align: middle; min-width:50px; display: inline-block; text-align: right; }
+        /* Style for inline labels like checkboxes */
+        .control-group input[type="checkbox"] + label { display: inline-block; margin-left: 5px; font-size: 1em; /* Adjust font size if needed */ vertical-align: middle;}
+        @media (min-width: 992px) {
+            body, .main-container { flex-direction: row; }
+            .controls-panel { width: 380px; flex-shrink: 0; }
+            .canvas-container { min-height: auto; }
+        }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 8px 16px;
+            background-color: white;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 10; /* Ensure it's above other content */
+        }
+        .back-button:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+    </style>
+    <!-- <link rel="icon" href="../icon.jpg" type="image/x-icon"> -->
+</head>
+<body>
+    <a href="../index.html" class="back-button">← Back to Projects</a>
+
+    <div class="main-container">
+        <div class="canvas-container">
+            <canvas id="raytraceCanvas"></canvas>
+        </div>
+        <div class="controls-panel">
+            <h2>Kontrol Scene</h2>
+            <div id="lights-controls-container"></div>
+            <div id="object-controls"></div>
+            <div class="control-group">
+                <h3>Pengaturan Umum</h3>
+                <label for="canvas-resolution">Resolusi Render:</label>
+                <select id="canvas-resolution">
+                    <option value="320x240">320x240 (Cepat)</option>
+                    <option value="400x300">400x300</option>
+                    <option value="500x375" selected>500x375 (Default)</option>
+                    <option value="600x450">600x450</option>
+                    <option value="800x600">800x600 (Lambat)</option>
+                </select>
+                <br><br>
+                <input type="checkbox" id="enable-shadows" checked>
+                <label for="enable-shadows">Aktifkan Bayangan</label>
+                <br><br>
+                <input type="checkbox" id="enable-reflections" checked>
+                <label for="enable-reflections">Aktifkan Refleksi & Refraksi</label>
+                <br><br>
+                 <label for="max-recursion-depth">Kedalaman Rekursi Maks:</label>
+                <input type="number" id="max-recursion-depth" value="5" min="0" max="10" style="width: 50px;">
+            </div>
+        </div>
+    </div>
+
+    <script id="vector-helpers">
+        const vec3 = {
+            create: (x = 0, y = 0, z = 0) => [x, y, z],
+            clone: (a) => [a[0], a[1], a[2]],
+            subtract: (out, a, b) => { out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; out[2] = a[2] - b[2]; return out; },
+            add: (out, a, b) => { out[0] = a[0] + b[0]; out[1] = a[1] + b[1]; out[2] = a[2] + b[2]; return out; },
+            scale: (out, a, s) => { out[0] = a[0] * s; out[1] = a[1] * s; out[2] = a[2] * s; return out; },
+            dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+            lengthSq: (a) => a[0] * a[0] + a[1] * a[1] + a[2] * a[2],
+            length: (a) => Math.sqrt(vec3.lengthSq(a)),
+            normalize: (out, a) => { const len = vec3.length(a); if (len > 0.00001) { const invLen = 1 / len; out[0] = a[0] * invLen; out[1] = a[1] * invLen; out[2] = a[2] * invLen; } else { out[0] = 0; out[1] = 0; out[2] = 0; } return out; },
+            multiply: (out, a, b) => { out[0] = a[0] * b[0]; out[1] = a[1] * b[1]; out[2] = a[2] * b[2]; return out; },
+            reflect: (out, I, N) => { // I: incident vector, N: normal vector. Result is normalized if I and N are.
+                const dotIN = vec3.dot(I, N);
+                out[0] = I[0] - 2 * dotIN * N[0];
+                out[1] = I[1] - 2 * dotIN * N[1];
+                out[2] = I[2] - 2 * dotIN * N[2];
+                return out;
+            },
+            // Fungsi refract berdasarkan Hukum Snellius
+            // I: incident vector (normalized)
+            // N: surface normal (normalized) - Assumed pointing outwards for entry, inwards for exit in calculation context
+            // eta: ratio of incident_IOR / transmitted_IOR
+            // Returns the refracted vector (normalized) or null if Total Internal Reflection (TIR) occurs.
+            refract: (out, I, N, eta) => {
+                const dot_IN = vec3.dot(I, N);
+                 // Use 1.0 minus dot_IN * dot_IN (which is sin^2) to avoid issues with precision when I and N are almost parallel/antiparallel
+                const k = 1.0 - eta * eta * (1.0 - dot_IN * dot_IN); // Term under the square root
+
+                if (k < 0) { // Total Internal Reflection
+                    return null;
+                }
+
+                // Refraction formula: eta * I + (eta * dot(N, I) - sqrt(k)) * N
+                out[0] = eta * I[0] + (eta * dot_IN - Math.sqrt(k)) * N[0];
+                out[1] = eta * I[1] + (eta * dot_IN - Math.sqrt(k)) * N[1];
+                out[2] = eta * I[2] + (eta * dot_IN - Math.sqrt(k)) * N[2];
+
+                return out; // Result is normalized if I and N are.
+            }
+        };
+
+        // Fungsi konversi warna hex ke [r,g,b] 0-1
+        function hexToRgb01(hex) { let r = 0, g = 0, b = 0; if (hex.length == 4) { r = parseInt(hex[1] + hex[1], 16); g = parseInt(hex[2] + hex[2], 16); b = parseInt(hex[3] + hex[3], 16); } else if (hex.length == 7) { r = parseInt(hex[1] + hex[2], 16); g = parseInt(hex[3] + hex[4], 16); b = parseInt(hex[5] + hex[6], 16); } return [r / 255, g / 255, b / 255]; }
+        // Fungsi konversi warna [r,g,b] 0-1 ke hex
+        function rgb01ToHex(rgb01) { const r = Math.max(0, Math.min(255, Math.round(rgb01[0] * 255))); const g = Math.max(0, Math.min(255, Math.round(rgb01[1] * 255))); const b = Math.max(0, Math.min(255, Math.round(rgb01[2] * 255))); return "#" + (r << 16 | g << 8 | b).toString(16).padStart(6, '0'); }
+    </script>
+
+    <script id="main-raytracer">
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('raytraceCanvas');
+            const ctx = canvas.getContext('2d');
+            const resolutionSelect = document.getElementById('canvas-resolution');
+            const shadowsCheckbox = document.getElementById('enable-shadows');
+            const reflectionsCheckbox = document.getElementById('enable-reflections');
+            const maxDepthInput = document.getElementById('max-recursion-depth');
+
+            let canvasWidth = 240;
+            let canvasHeight = 180;
+            let enableShadows = true;
+            let enableReflections = true; // Controls both reflection and refraction tracing
+            let MAX_RECURSION_DEPTH = 5;
+
+            let rayOrigin = vec3.create();
+            const backgroundColorRGB = [0.529, 0.808, 0.922]; // Langit biru cerah
+
+            const lights = [
+                {
+                    id: 'light-0', name: 'Lampu Kiri Atas',
+                    position: vec3.create(-canvasWidth * 0.6, -canvasHeight * 0.8, -150),
+                    ambient: vec3.create(0.05,0.05,0.05),
+                    diffuse: vec3.create(0.7,0.7,0.6),
+                    specular: vec3.create(0.8,0.8,0.8),
+                    dynamicPosition: vec3.create(),
+                    enabled: true // <-- Tambah properti enabled
+                },
+                {
+                    id: 'light-1', name: 'Lampu Kanan Belakang',
+                    position: vec3.create(canvasWidth * 0.5, -canvasHeight * 0.4, 100),
+                    ambient: vec3.create(0.03,0.03,0.05),
+                    diffuse: vec3.create(0.35,0.35,0.5),
+                    specular: vec3.create(0.5,0.5,0.6),
+                    dynamicPosition: vec3.create(),
+                    enabled: true // <-- Tambah properti enabled
+                }
+            ];
+            const globalAmbient = vec3.create(0.1, 0.1, 0.1);
+            const SHADOW_EPSILON = 0.001;
+            const RAY_OFFSET_EPSILON = 0.001; // Epsilon untuk offset asal ray pantul/bias
+
+            const AIR_IOR = 1.0; // Index of Refraction for air
+
+            function intersectSphere(sphere, rayOrigin, rayDirection) {
+                 const Lvec = vec3.subtract(vec3.create(), sphere.center, rayOrigin);
+                 const tca = vec3.dot(Lvec, rayDirection);
+                 const d2 = vec3.dot(Lvec, Lvec) - tca * tca;
+                 if (d2 > sphere.radiusSq) return null;
+                 const thc = Math.sqrt(sphere.radiusSq - d2);
+                 let t0 = tca - thc;
+                 let t1 = tca + thc;
+                 if (t0 > t1) [t0, t1] = [t1, t0]; // Swap if t0 is greater than t1
+
+                 let tIntersect = -1;
+
+                 // Check if the nearest intersection (t0) is valid (greater than epsilon)
+                 if (t0 > RAY_OFFSET_EPSILON) {
+                     tIntersect = t0;
+                 }
+                 // If t0 is not valid, check the farther intersection (t1)
+                 else if (t1 > RAY_OFFSET_EPSILON) {
+                      tIntersect = t1;
+                 }
+                 else {
+                     return null; // Both intersections are behind the ray origin or too close
+                 }
+
+                 const hitPoint = vec3.add(vec3.create(), rayOrigin, vec3.scale(vec3.create(), rayDirection, tIntersect));
+                 const normal = vec3.normalize(vec3.create(), vec3.subtract(vec3.create(), hitPoint, sphere.center));
+
+                 return { t: tIntersect, object: sphere, point: hitPoint, normal: normal };
+            }
+
+            function intersectPlane(plane, rayOrigin, rayDirection) {
+                 const denominator = vec3.dot(rayDirection, plane.normal);
+
+                 // Ray is parallel to the plane or points away from it (if normal points towards ray origin)
+                 // Allow for small epsilon if denominator is close to zero for robustness
+                 if (Math.abs(denominator) < 1e-6) { // Check for near-parallel rays
+                    return null;
+                 }
+
+                 const P0_minus_O = vec3.subtract(vec3.create(), plane.pointOnPlane, rayOrigin);
+                 const t = vec3.dot(P0_minus_O, plane.normal) / denominator;
+
+                 // Intersection must be in front of the ray origin
+                 if (t < RAY_OFFSET_EPSILON) { // Use the same epsilon for consistency
+                    return null;
+                 }
+
+                 const hitPoint = vec3.add(vec3.create(), rayOrigin, vec3.scale(vec3.create(), rayDirection, t));
+
+                 // For a plane, the normal is constant. Need to ensure it points towards the ray origin
+                 // if the ray is coming from the other side.
+                 const normal = (vec3.dot(rayDirection, plane.normal) < 0) ? vec3.clone(plane.normal) : vec3.scale(vec3.create(), plane.normal, -1);
+
+
+                 return { t: t, object: plane, point: hitPoint, normal: normal };
+            }
+
+            const floorYPosition = canvasHeight * 0.85; // Lebih dinamis
+            const sceneObjects = [
+                // Bola Merah -> Bola Kaca Bening
+                { id: 'sphere1', name: 'Bola Kaca', type: 'sphere',
+                  center: vec3.create(220, 255, 100), // Posisi awal, akan diupdate oleh kontrol
+                  radius: 60, radiusSq: 60*60, color: [1.0,1.0,1.0], // Warna dasar putih untuk kaca bening
+                  material: {ka:0.0,kd:0.0,ks:0.8,shininess:300, reflectivity: 0.2, ior: 1.5, isTransparent: true}, // Material kaca: ka, kd rendah, ks tinggi, ada ior
+                  intersect: function(ro,rd){return intersectSphere(this,ro,rd);}},
+                // Bola Biru -> Tetap Bola Padat
+                { id: 'sphere2', name: 'Bola Biru', type: 'sphere',
+                  center: vec3.create(350, 235, 180), // Posisi awal, akan diupdate oleh kontrol
+                  radius: 80, radiusSq: 80*80, color: [0.2,0.2,1.0],
+                  material: {ka:0.5,kd:0.8,ks:0.2,shininess:30, reflectivity: 0.5, isTransparent: false}, // Material padat
+                  intersect: function(ro,rd){return intersectSphere(this,ro,rd);}},
+                // Lantai Reflektif
+                { id: 'floor', name: 'Lantai Reflektif', type: 'plane',
+                  pointOnPlane: vec3.create(0, floorYPosition, 0), // Posisi Y akan diupdate
+                  normal: vec3.normalize(vec3.create(),[0,-1,0]), color: [0.7,0.7,0.65],
+                  material: {ka:0.6,kd:0.7,ks:0.3,shininess:50, reflectivity: 0.2, isTransparent: false},
+                  intersect: function(ro,rd){return intersectPlane(this,ro,rd);}}
+            ];
+
+            function setPixel(imageData, x, y, colorRGB_0_1) {
+                 const index = (y * imageData.width + x) * 4;
+                 imageData.data[index] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[0] * 255)));
+                 imageData.data[index + 1] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[1] * 255)));
+                 imageData.data[index + 2] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[2] * 255)));
+                 imageData.data[index + 3] = 255;
+            }
+
+            // Hanya menghitung pencahayaan lokal (Phong) dari semua sumber cahaya
+            function calculateLocalIllumination(hitInfo, viewOriginForThisRay) {
+                const N = hitInfo.normal;
+                const P = hitInfo.point;
+                const material = hitInfo.object.material;
+                const objectColor = hitInfo.object.color;
+
+                // Warna ambient global (selalu ada)
+                let localColor = vec3.multiply(vec3.create(), objectColor, globalAmbient);
+                vec3.scale(localColor, localColor, material.ka);
+
+                for (const light of lights) {
+                    // <-- Tambah cek untuk properti enabled
+                    if (!light.enabled) {
+                        continue; // Lewati lampu ini jika mati
+                    }
+                    // -->
+
+                    // Warna ambient dari cahaya spesifik (jika ada dan lampu nyala)
+                    const lightAmbientContribution = vec3.multiply(vec3.create(), objectColor, light.ambient);
+                    vec3.scale(lightAmbientContribution, lightAmbientContribution, material.ka);
+                    vec3.add(localColor, localColor, lightAmbientContribution);
+
+                    const toLightUnnormalized = vec3.subtract(vec3.create(), light.dynamicPosition, P);
+                    const distanceToLight = vec3.length(toLightUnnormalized);
+                    const L = vec3.normalize(vec3.create(), toLightUnnormalized);
+
+                    // Check for shadows
+                    let inShadow = false;
+                    if (enableShadows) {
+                        // Offset shadow ray origin slightly along normal to avoid self-intersection
+                        const shadowRayOrigin = vec3.add(vec3.create(), P, vec3.scale(vec3.create(), N, SHADOW_EPSILON));
+                        for (const obj_s of sceneObjects) {
+                            // Don't cast shadow ray to the object the original ray just hit
+                            if (obj_s !== hitInfo.object) {
+                                const shadowHit = obj_s.intersect(shadowRayOrigin, L);
+                                // If shadowHit exists AND it's closer than the light source
+                                if (shadowHit && shadowHit.t > SHADOW_EPSILON && shadowHit.t < distanceToLight) {
+                                    inShadow = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!inShadow) {
+                        // Diffuse
+                        const dotNL = Math.max(0, vec3.dot(N, L));
+                        if (dotNL > 0) {
+                            const diffuseFromLight = vec3.multiply(vec3.create(), objectColor, light.diffuse);
+                            vec3.scale(diffuseFromLight, diffuseFromLight, material.kd * dotNL);
+                            vec3.add(localColor, localColor, diffuseFromLight);
+                        }
+
+                        // Specular (Phong model - using reflection vector R instead of halfway vector H)
+                        // Reflected ray direction for specular highlight calculation
+                        const V = vec3.normalize(vec3.create(), vec3.subtract(vec3.create(), viewOriginForThisRay, P)); // Vektor dari P ke asal ray (kamera atau titik pantul sebelumnya)
+                        const R_spec = vec3.reflect(vec3.create(), vec3.scale(vec3.create(), L, -1), N); // Refleksi dari arah cahaya (-L)
+
+                        const dotVR = Math.max(0, vec3.dot(V, R_spec));
+                        if (dotVR > 0) {
+                             const specularIntensity = Math.pow(dotVR, material.shininess);
+                            const specularFromLight = vec3.scale(vec3.create(), light.specular, material.ks * specularIntensity);
+                             vec3.add(localColor, localColor, specularFromLight);
+                        }
+                    }
+                }
+                 // Clamp final color (although setPixel does this too)
+                localColor[0] = Math.min(localColor[0], 1.0);
+                localColor[1] = Math.min(localColor[1], 1.0);
+                localColor[2] = Math.min(localColor[2], 1.0);
+                return localColor;
+            }
+
+            // Fungsi untuk menghitung koefisien refleksi Fresnel
+            // (Schlick's approximation)
+            function fresnelSchlick(cosTheta, F0) {
+                return F0 + (1.0 - F0) * Math.pow(1.0 - cosTheta, 5.0);
+            }
+
+            // Menentukan F0 (reflektansi pada sudut 0 derajat)
+            // Untuk dielektrik (non-logam) seperti kaca, F0 bisa dihitung dari IoR
+            function iorToF0(ior1, ior2) {
+                 const r0 = (ior1 - ior2) / (ior1 + ior2);
+                 return r0 * r0;
+            }
+
+
+            function traceRay(currentRayOrigin, currentRayDirection, depth) {
+                if (depth > MAX_RECURSION_DEPTH) {
+                    return vec3.clone(backgroundColorRGB); // Hentikan rekursi
+                }
+
+                let closestHit = null;
+                let min_t = Infinity;
+                for (const object of sceneObjects) {
+                    const hitInfo = object.intersect(currentRayOrigin, currentRayDirection);
+                    // Gunakan RAY_OFFSET_EPSILON untuk memastikan hit di depan origin dan tidak self-intersect
+                    if (hitInfo && hitInfo.t < min_t && hitInfo.t > RAY_OFFSET_EPSILON) {
+                        min_t = hitInfo.t;
+                        closestHit = hitInfo;
+                    }
+                }
+
+                if (!closestHit) {
+                    return vec3.clone(backgroundColorRGB); // Ray tidak menabrak apapun
+                }
+
+                const hitObject = closestHit.object;
+                const material = hitObject.material;
+                const hitPoint = closestHit.point;
+                let N = closestHit.normal; // Normal di titik tabrakan
+
+                // Hitung pencahayaan lokal (difus & spekuler dari cahaya langsung)
+                // Ini penting untuk objek padat dan spekuler highlight pada objek transparan.
+                const localColor = calculateLocalIllumination(closestHit, currentRayOrigin);
+
+                let finalColor = vec3.create(0,0,0); // Mulai dengan hitam (atau ambient jika ingin ambient selalu ada)
+
+                 // Ambient global selalu ditambahkan terlepas dari pantulan/bias
+                 vec3.add(finalColor, finalColor, vec3.multiply(vec3.create(), hitObject.color, globalAmbient));
+                 vec3.scale(finalColor, finalColor, material.ka);
+
+
+                // --- Logika Refraksi dan Refleksi ---
+                // Hanya lakukan rekursi jika refleksi/refraksi diaktifkan DAN objek relevan
+                if (enableReflections && (material.reflectivity > 0 || material.isTransparent)) {
+
+                     const I = currentRayDirection; // Incident vector (normalized)
+                     let reflectionColor = vec3.create(0,0,0);
+                     let refractionColor = vec3.create(0,0,0);
+
+                     // HitPointOffset untuk menghindari self-intersection.
+                     // Default offset ke arah normal asli.
+                     const reflectionOrigin = vec3.add(vec3.create(), hitPoint, vec3.scale(vec3.create(), closestHit.normal, RAY_OFFSET_EPSILON));
+
+
+                     if (material.isTransparent) {
+                         const ior1 = AIR_IOR; // IOR medium asal ray (di luar objek)
+                         const ior2 = material.ior; // IOR medium tujuan (di dalam objek)
+                         let eta = ior1 / ior2; // eta untuk transisi luar -> dalam
+
+                         // Tentukan apakah ray masuk atau keluar objek transparan
+                         const dot_IN = vec3.dot(I, N);
+                         let entering = dot_IN < 0;
+
+                         if (!entering) {
+                            // Ray keluar dari objek (dari dalam ke luar)
+                            N = vec3.scale(vec3.create(), N, -1); // Balik normal untuk perhitungan Snellius
+                            eta = ior2 / ior1; // eta untuk transisi dalam -> luar
+                         }
+
+                         // HitPointOffset untuk ray bias: offset menjauhi permukaan di sisi mana pun
+                         const refractionOrigin = vec3.add(vec3.create(), hitPoint, vec3.scale(vec3.create(), N, RAY_OFFSET_EPSILON));
+
+
+                         // Hitung arah refraksi
+                         const refractDir = vec3.refract(vec3.create(), I, N, eta);
+
+                         // Hitung koefisien Fresnel (R = refleksi, T = transmisi = 1-R)
+                         // cos(theta_i) = absolute value of dot product of incident vector and normal
+                         const cosThetaI = Math.abs(dot_IN); // cos(angle_of_incidence)
+                         const F0 = iorToF0(ior1, ior2); // Reflektansi pada sudut 0 derajat
+                         const R = fresnelSchlick(cosThetaI, F0); // Koefisien refleksi pada sudut ini
+
+                         if (refractDir === null) {
+                             // Total Internal Reflection (TIR) - Tidak ada refraksi, hanya refleksi
+                             const reflectDir = vec3.reflect(vec3.create(), I, closestHit.normal); // Refleksi selalu menggunakan normal asli
+                             reflectionColor = traceRay(reflectionOrigin, reflectDir, depth + 1);
+                             // Karena TIR, semua energi dipantulkan. Warna final = warna pantulan + komponen lokal (khususnya specular)
+                             vec3.add(finalColor, finalColor, reflectionColor);
+                             // Tambahkan komponen spekuler dari localColor (penting untuk kilauan)
+                             // Jika ingin diffuse juga terlihat (misal kaca keruh), tambahkan diffuse.
+                             // Untuk kaca bening, spekuler saja cukup.
+                             vec3.add(finalColor, finalColor, vec3.scale(vec3.create(), localColor, 1.0)); // Ambil semua local color (ambient sudah ditangani di awal)
+                         } else {
+                             // Ada Refraksi
+                             // Trace ray pantul dan skalakan dengan R (Fresnel)
+                             const reflectDir = vec3.reflect(vec3.create(), I, closestHit.normal); // Refleksi selalu menggunakan normal asli
+                             reflectionColor = traceRay(reflectionOrigin, reflectDir, depth + 1);
+                             vec3.scale(reflectionColor, reflectionColor, R);
+
+                             // Trace ray bias dan skalakan dengan (1-R) (Fresnel)
+                             refractionColor = traceRay(refractionOrigin, refractDir, depth + 1);
+                             // Warna bias bisa diskalakan lagi dengan warna objek (untuk kaca berwarna)
+                             // refractionColor = vec3.multiply(refractionColor, refractionColor, hitObject.color); // Uncomment for colored glass effect
+                             vec3.scale(refractionColor, refractionColor, (1.0 - R));
+
+                             // Warna final adalah kombinasi pantulan dan bias, ditambah komponen lokal (difus+spekuler)
+                             // Komponen lokal ini penting untuk cahaya yang datang langsung ke permukaan objek transparan (terutama specular).
+                             vec3.add(finalColor, finalColor, localColor); // Tambahkan local color (difus + spekuler)
+                             vec3.add(finalColor, finalColor, reflectionColor); // Tambahkan pantulan (diskala Fresnel)
+                             vec3.add(finalColor, finalColor, refractionColor); // Tambahkan bias (diskala Fresnel)
+                         }
+
+                     } else { // Objek Opaque (padat)
+                         // Lakukan tracing refleksi seperti sebelumnya
+                         if (material.reflectivity > 0) {
+                              const reflectDir = vec3.reflect(vec3.create(), I, N);
+                              reflectionColor = traceRay(reflectionOrigin, reflectDir, depth + 1);
+                              // finalColor = (1-reflectivity) * localColor + reflectivity * reflectedColor
+                              // Ambient global sudah ditangani di awal, jadi localColor di sini hanya difus + spekuler
+                              const diffuseSpecularColor = calculateLocalIllumination(closestHit, currentRayOrigin); // Hitung ulang hanya untuk difus/spekuler
+                              vec3.scale(finalColor, diffuseSpecularColor, 1.0 - material.reflectivity); // Komponen lokal
+                              vec3.add(finalColor, finalColor, vec3.scale(vec3.create(), reflectionColor, material.reflectivity)); // Tambah komponen refleksi
+                         } else {
+                            // Jika tidak ada refleksi, finalColor = localColor (difus + spekuler)
+                            const diffuseSpecularColor = calculateLocalIllumination(closestHit, currentRayOrigin); // Hitung ulang hanya untuk difus/spekuler
+                             vec3.add(finalColor, finalColor, diffuseSpecularColor);
+                         }
+                     }
+                } else {
+                    // Jika objek tidak reflektif dan tidak transparan, warna final hanya warna lokal
+                     // Ambient global sudah ditangani di awal, jadi localColor di sini hanya difus + spekuler
+                    const diffuseSpecularColor = calculateLocalIllumination(closestHit, currentRayOrigin); // Hitung ulang hanya untuk difus/spekuler
+                    vec3.add(finalColor, finalColor, diffuseSpecularColor);
+                }
+
+
+                // Clamp final color (meskipun setPixel juga melakukan ini)
+                finalColor[0] = Math.min(finalColor[0], 1.0);
+                finalColor[1] = Math.min(finalColor[1], 1.0);
+                finalColor[2] = Math.min(finalColor[2], 1.0);
+                return finalColor;
+            }
+
+
+            let isRendering = false;
+            let renderRequestPending = false;
+
+            function renderScene() {
+                if (isRendering) { renderRequestPending = true; return; }
+                isRendering = true;
+                enableShadows = shadowsCheckbox.checked;
+                enableReflections = reflectionsCheckbox.checked; // Checkbox ini sekarang mengontrol rekursi umum (refleksi & refraksi)
+                MAX_RECURSION_DEPTH = parseInt(maxDepthInput.value) || 0;
+                MAX_RECURSION_DEPTH = Math.max(0, Math.min(10, MAX_RECURSION_DEPTH)); // Clamp depth
+
+                console.time('RenderTime');
+
+                // Update dynamic light positions based on current canvas size
+                for (const light of lights) {
+                    light.dynamicPosition[0] = canvasWidth / 2 + light.position[0];
+                    light.dynamicPosition[1] = canvasHeight / 2 + light.position[1];
+                    light.dynamicPosition[2] = light.position[2];
+                }
+
+                const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+                const tempRayDir = vec3.create();
+                const screenPoint = vec3.create();
+
+                // Camera setup is based on canvas dimensions for this 2D canvas raytracer
+                // rayOrigin acts as the camera position
+                // For this simple setup, the canvas plane is effectively at Z=0 in camera space.
+
+                for (let y = 0; y < canvasHeight; y++) {
+                    for (let x = 0; x < canvasWidth; x++) {
+                        // Calculate direction vector from camera (rayOrigin) to pixel (x, y, 0)
+                        // Screen points are on the Z=0 plane in camera space (for this setup)
+                        screenPoint[0] = x;
+                        screenPoint[1] = y;
+                        screenPoint[2] = 0; // Assume screen is at Z=0
+
+                        vec3.subtract(tempRayDir, screenPoint, rayOrigin); // Vektor dari kamera ke pixel
+                        vec3.normalize(tempRayDir, tempRayDir); // Normalisasi untuk mendapatkan arah
+
+                        const pixelColor = traceRay(vec3.clone(rayOrigin), tempRayDir, 0); // Mulai rekursi dari kedalaman 0, gunakan clone agar rayOrigin tidak berubah
+                        setPixel(imageData, x, y, pixelColor);
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+                console.timeEnd('RenderTime');
+                isRendering = false;
+                if (renderRequestPending) {
+                    renderRequestPending = false;
+                    // Use requestAnimationFrame for smoother updates if possible,
+                    // but setTimeout(0) is fine for CPU heavy tasks to yield
+                    setTimeout(renderScene, 0);
+                }
+            }
+
+            function setCanvasSize() {
+                const [w, h] = resolutionSelect.value.split('x').map(Number);
+                canvasWidth = w;
+                canvasHeight = h;
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+
+                // Update camera position based on new size
+                // Keep camera centered horizontally, slightly above center vertically, and back on Z
+                rayOrigin[0] = canvasWidth / 2;
+                rayOrigin[1] = canvasHeight / 2 - canvasHeight * 0.1; // Kamera sedikit naik dari tengah Y
+                rayOrigin[2] = -Math.max(canvasWidth, canvasHeight) * 0.65; // Kamera mundur di Z
+
+                // Update floor position based on new size
+                sceneObjects[2].pointOnPlane[1] = canvasHeight * 0.85; // Update Y lantai
+
+                // Sphere positions remain fixed as per original code's likely intent,
+                // rely on sliders for adjustment.
+
+                updateSliderLimits(); // Update slider limits based on potentially new canvas size
+                updateUIFromState(); // Update UI to show current values
+                renderScene(); // Re-render with new size
+            }
+
+            function updateUIFromState() {
+                 // Update sphere position inputs
+                 sceneObjects.forEach(obj => {
+                     if (obj.type === 'sphere') {
+                         const xVal = document.getElementById(`${obj.id}-x-val`);
+                         const yVal = document.getElementById(`${obj.id}-y-val`);
+                         const zVal = document.getElementById(`${obj.id}-z-val`);
+                         if(xVal) xVal.textContent = Math.round(obj.center[0]);
+                         if(yVal) yVal.textContent = Math.round(obj.center[1]);
+                         if(zVal) zVal.textContent = Math.round(obj.center[2]);
+
+                         const xSlider = document.getElementById(`${obj.id}-x`);
+                         const ySlider = document.getElementById(`${obj.id}-y`);
+                         const zSlider = document.getElementById(`${obj.id}-z`);
+                         if(xSlider) { xSlider.value = obj.center[0]; updateSliderLimitsForObject(obj); } // Update limits and value
+                         if(ySlider) { ySlider.value = obj.center[1]; updateSliderLimitsForObject(obj); } // Update limits and value
+                         if(zSlider) { zSlider.value = obj.center[2]; updateSliderLimitsForObject(obj); } // Update limits and value
+
+
+                         // Update color picker
+                         const colorPicker = document.getElementById(`${obj.id}-color`);
+                         if(colorPicker) colorPicker.value = rgb01ToHex(obj.color);
+
+                         // Update IoR slider for transparent sphere
+                         if(obj.material.isTransparent) {
+                             const iorVal = document.getElementById(`${obj.id}-ior-val`);
+                             const iorSlider = document.getElementById(`${obj.id}-ior`);
+                             if(iorVal) iorVal.textContent = obj.material.ior.toFixed(2);
+                             if(iorSlider) iorSlider.value = obj.material.ior;
+                         }
+                     }
+                 });
+
+                 // Update light position inputs AND enabled checkbox
+                 lights.forEach(light => {
+                     const xVal = document.getElementById(`${light.id}-x-val`);
+                     const yVal = document.getElementById(`${light.id}-y-val`);
+                     const zVal = document.getElementById(`${light.id}-z-val`);
+                     if(xVal) xVal.textContent = Math.round(light.position[0]);
+                     if(yVal) yVal.textContent = Math.round(light.position[1]);
+                     if(zVal) zVal.textContent = Math.round(light.position[2]);
+
+                     const xSlider = document.getElementById(`${light.id}-x`);
+                     const ySlider = document.getElementById(`${light.id}-y`);
+                     const zSlider = document.getElementById(`${light.id}-z`);
+                     if(xSlider) { xSlider.value = light.position[0]; updateSliderLimitsForLight(light); } // Update limits and value
+                     if(ySlider) { ySlider.value = light.position[1]; updateSliderLimitsForLight(light); } // Update limits and value
+                     if(zSlider) { zSlider.value = light.position[2]; updateSliderLimitsForLight(light); } // Update limits and value
+
+                     // <-- Update Enabled Checkbox state
+                     const enableCheckbox = document.getElementById(`${light.id}-enabled`);
+                     if(enableCheckbox) {
+                         enableCheckbox.checked = light.enabled;
+                     }
+                     // -->
+                 });
+
+                  // Update general settings
+                 shadowsCheckbox.checked = enableShadows;
+                 reflectionsCheckbox.checked = enableReflections;
+                 maxDepthInput.value = MAX_RECURSION_DEPTH;
+
+            }
+
+            // Helper to update slider limits for a specific object (called after canvas resize)
+            function updateSliderLimitsForObject(obj) {
+                 if (obj.type === 'sphere') {
+                     const xSlider = document.getElementById(`${obj.id}-x`);
+                     const ySlider = document.getElementById(`${obj.id}-y`);
+                     const zSlider = document.getElementById(`${obj.id}-z`);
+
+                     if (xSlider) { xSlider.min = 0; xSlider.max = canvasWidth; }
+                     if (ySlider) { ySlider.min = obj.radius; ySlider.max = sceneObjects[2].pointOnPlane[1] - obj.radius; }
+                     if (zSlider) { zSlider.min = -Math.max(canvasWidth,canvasHeight) * 1.5; zSlider.max = Math.max(canvasWidth, canvasHeight) * 1.5; }
+
+                     if (obj.material.isTransparent) {
+                        const iorSlider = document.getElementById(`${obj.id}-ior`);
+                        if (iorSlider) {
+                            iorSlider.min = 1.0;
+                            iorSlider.max = 2.5;
+                            iorSlider.step = 0.01;
+                        }
+                     }
+                 }
+            }
+            // Helper to update slider limits for a specific light (called after canvas resize)
+             function updateSliderLimitsForLight(light) {
+                 const lightXSlider = document.getElementById(`${light.id}-x`);
+                 const lightYSlider = document.getElementById(`${light.id}-y`);
+                 const lightZSlider = document.getElementById(`${light.id}-z`);
+
+                 if(lightXSlider) { lightXSlider.min = -canvasWidth * 1.5; lightXSlider.max = canvasWidth * 1.5; }
+                 if(lightYSlider) { lightYSlider.min = -canvasHeight * 1.5; lightYSlider.max = canvasHeight * 1.5; }
+                 if(lightZSlider) { lightZSlider.min = -Math.max(canvasWidth, canvasHeight) * 2; lightZSlider.max = Math.max(canvasWidth, canvasHeight) * 2; }
+             }
+
+            // Combined function to update all slider limits
+            function updateSliderLimits() {
+                sceneObjects.forEach(updateSliderLimitsForObject);
+                lights.forEach(updateSliderLimitsForLight);
+            }
+
+
+            function createAllLightControls() {
+                 const container = document.getElementById('lights-controls-container');
+                 container.innerHTML = ''; // Clear existing controls
+                 lights.forEach(light => {
+                     const group = document.createElement('div');
+                     group.className = 'control-group';
+                     group.innerHTML = `<h3>${light.name}</h3>`;
+
+                     // Position controls
+                     ['x', 'y', 'z'].forEach((axis, index) => {
+                         let label = document.createElement('label');
+                         label.htmlFor = `${light.id}-${axis}`;
+                         label.textContent = `Posisi ${axis.toUpperCase()}: `;
+
+                         let output = document.createElement('output');
+                         output.id = `${light.id}-${axis}-val`;
+                         output.textContent = Math.round(light.position[index]);
+                         label.appendChild(output);
+                         group.appendChild(label);
+
+                         let slider = document.createElement('input');
+                         slider.type = 'range';
+                         slider.id = `${light.id}-${axis}`;
+                         slider.value = light.position[index];
+                         slider.step = 10; // Coarser steps for lights
+                         slider.oninput = (e) => {
+                             light.position[index] = parseFloat(e.target.value);
+                             output.textContent = Math.round(e.target.value);
+                             renderScene();
+                         };
+                         group.appendChild(slider);
+                     });
+
+                     // <-- Add Enabled Checkbox
+                     const enableDiv = document.createElement('div'); // Optional: wrap in a div for better layout
+                     enableDiv.style.marginTop = '10px'; // Add some space
+                     enableDiv.style.marginBottom = '5px'; // Add some space
+
+                     const checkbox = document.createElement('input');
+                     checkbox.type = 'checkbox';
+                     checkbox.id = `${light.id}-enabled`; // Unique ID
+                     checkbox.checked = light.enabled; // Set initial state
+
+                     const label = document.createElement('label');
+                     label.htmlFor = `${light.id}-enabled`;
+                     label.textContent = `Aktifkan Lampu`;
+                     // CSS for this label moved to <style> block
+
+                     checkbox.addEventListener('change', (e) => {
+                         light.enabled = e.target.checked; // Update state
+                         renderScene(); // Re-render
+                     });
+
+                     enableDiv.appendChild(checkbox);
+                     enableDiv.appendChild(label);
+                     group.appendChild(enableDiv);
+                     // -->
+
+                     container.appendChild(group);
+                 });
+            }
+
+            function createObjectControls() {
+                const controlsContainer = document.getElementById('object-controls');
+                controlsContainer.innerHTML = ''; // Clear existing controls
+
+                sceneObjects.forEach((obj) => {
+                    // Only create controls for spheres for now
+                    if (obj.type !== 'sphere') return;
+
+                    const group = document.createElement('div');
+                    group.className = 'control-group';
+                    group.innerHTML = `<h3>${obj.name}</h3>`;
+
+                    // Position controls
+                    ['x', 'y', 'z'].forEach((axis, index_axis) => {
+                        let label = document.createElement('label');
+                        label.htmlFor = `${obj.id}-${axis}`;
+                        label.textContent = `Posisi ${axis.toUpperCase()}: `;
+
+                        let output = document.createElement('output');
+                        output.id = `${obj.id}-${axis}-val`;
+                        output.textContent = Math.round(obj.center[index_axis]);
+                        label.appendChild(output);
+                        group.appendChild(label);
+
+                        let slider = document.createElement('input');
+                        slider.type = 'range';
+                        slider.id = `${obj.id}-${axis}`;
+                        slider.value = obj.center[index_axis];
+                        slider.step = 1; // Finer steps for objects
+                        slider.oninput = (e) => {
+                            obj.center[index_axis] = parseFloat(e.target.value);
+                            output.textContent = Math.round(e.target.value);
+                            renderScene();
+                        };
+                        group.appendChild(slider);
+                    });
+
+                    // Color control (only visible for non-transparent or if needed for colored glass)
+                    // Keeping it visible allows setting the "tint" if desired later
+                    let labelColor = document.createElement('label');
+                    labelColor.htmlFor = `${obj.id}-color`;
+                    labelColor.textContent = `Warna: `;
+                    group.appendChild(labelColor);
+
+                    let colorPicker = document.createElement('input');
+                    colorPicker.type = 'color';
+                    colorPicker.id = `${obj.id}-color`;
+                    colorPicker.value = rgb01ToHex(obj.color);
+                    colorPicker.oninput = (e) => {
+                        obj.color = hexToRgb01(e.target.value);
+                        renderScene();
+                    };
+                    group.appendChild(colorPicker);
+
+                    // Add IoR control ONLY for the transparent sphere (sphere1)
+                    if (obj.material.isTransparent) {
+                        group.appendChild(document.createElement('br')); // Add spacing
+
+                        let labelIor = document.createElement('label');
+                        labelIor.htmlFor = `${obj.id}-ior`;
+                        labelIor.textContent = `Index Bias (IoR): `;
+
+                        let outputIor = document.createElement('output');
+                        outputIor.id = `${obj.id}-ior-val`;
+                        outputIor.textContent = obj.material.ior.toFixed(2); // Show 2 decimal places
+                        labelIor.appendChild(outputIor);
+                        group.appendChild(labelIor);
+
+                        let sliderIor = document.createElement('input');
+                        sliderIor.type = 'range';
+                        sliderIor.id = `${obj.id}-ior`;
+                        sliderIor.value = obj.material.ior;
+                        sliderIor.min = 1.0;
+                        sliderIor.max = 2.5; // Common range for dielectric
+                        sliderIor.step = 0.01; // Allow finer control
+                        sliderIor.oninput = (e) => {
+                            obj.material.ior = parseFloat(e.target.value);
+                            outputIor.textContent = obj.material.ior.toFixed(2);
+                            renderScene();
+                        };
+                        group.appendChild(sliderIor);
+                    }
+
+
+                    controlsContainer.appendChild(group);
+                });
+            }
+
+            // --- Event Listeners ---
+            resolutionSelect.addEventListener('change', setCanvasSize);
+            shadowsCheckbox.addEventListener('change', renderScene);
+            // Reflections checkbox now controls all secondary rays (reflection/refraction)
+            reflectionsCheckbox.addEventListener('change', renderScene);
+            maxDepthInput.addEventListener('change', () => {
+                MAX_RECURSION_DEPTH = parseInt(maxDepthInput.value) || 0;
+                 MAX_RECURSION_DEPTH = Math.max(0, Math.min(10, MAX_RECURSION_DEPTH)); // Clamp depth
+                 maxDepthInput.value = MAX_RECURSION_DEPTH; // Update input value in case it was out of range
+                renderScene();
+            });
+
+
+            // --- Initial Setup ---
+            createAllLightControls(); // Create light sliders and checkboxes
+            createObjectControls();   // Create object sliders (including new IoR for sphere1)
+            setCanvasSize();          // Set initial canvas size and render
+
+
+            // Optional: Add a simple mouse move listener to move one light source?
+            // canvas.addEventListener('mousemove', (e) => {
+            //     const rect = canvas.getBoundingClientRect();
+            //     // Convert mouse position to canvas coordinates relative to center
+            //     const mouseX = e.clientX - rect.left - canvasWidth / 2;
+            //     const mouseY = e.clientY - rect.top - canvasHeight / 2;
+            //     // Update light 0 position, keeping Z constant relative to its original Z
+            //     lights[0].position[0] = mouseX * 1.5; // Scale mouse movement
+            //     lights[0].position[1] = mouseY * 1.5;
+            //     updateUIFromState(); // Update light sliders/outputs
+            //     renderScene();
+            // });
+        });
+    </script>
+</body>
+</html>

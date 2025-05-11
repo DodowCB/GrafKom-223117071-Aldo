@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raytracer Interaktif - Dua Lampu & Bayangan Ganda</title>
+    <style>
+        body { margin: 0; font-family: sans-serif; background-color: #f0f0f0; color: #333; display: flex; flex-direction: column; min-height: 100vh; }
+        .main-container { display: flex; flex-direction: column; flex-grow: 1; width: 100%; }
+        .canvas-container { flex-grow: 1; display: flex; justify-content: center; align-items: center; background-color: #333; padding: 10px; min-height: 300px; }
+        #raytraceCanvas { border: 1px solid #555; max-width: 100%; max-height: 100%; }
+        .controls-panel { width: 100%; padding: 15px; background-color: #e9e9e9; box-sizing: border-box; overflow-y: auto; max-height: 100vh; }
+        .controls-panel h2, .controls-panel h3 { margin-top: 0; margin-bottom: 10px; color: #1a1a1a; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        .control-group { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px dashed #ddd; }
+        .control-group:last-child { border-bottom: none; }
+        .control-group label { display: block; margin-bottom: 3px; font-size: 0.9em; }
+        .control-group input[type="range"], .control-group input[type="color"] { width: calc(100% - 70px); margin-right: 10px; vertical-align: middle; }
+        .control-group input[type="color"] { width: 50px; height: 25px; padding: 0; border: 1px solid #ccc; }
+        .control-group output { font-size: 0.9em; vertical-align: middle; min-width:50px; display: inline-block; text-align: right; }
+        @media (min-width: 992px) { /* Lebarkan breakpoint untuk panel samping */
+            body, .main-container { flex-direction: row; }
+            .controls-panel { width: 380px; flex-shrink: 0; }
+            .canvas-container { min-height: auto; }
+        }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 8px 16px;
+            background-color: white;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        .back-button:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+    </style>
+    <link rel="icon" href="../icon.jpg" type="image/x-icon">
+
+</head>
+<body>
+    <a href="../index.html" class="back-button">← Back to Projects</a>
+
+    <div class="main-container">
+        <div class="canvas-container">
+            <canvas id="raytraceCanvas"></canvas>
+        </div>
+        <div class="controls-panel">
+            <h2>Kontrol Scene</h2>
+            
+            <div id="lights-controls-container">
+                <!-- Kontrol untuk semua lampu akan di-generate di sini -->
+            </div>
+
+            <div id="object-controls">
+                <!-- Kontrol untuk objek bola -->
+            </div>
+
+            <div class="control-group">
+                <h3>Pengaturan Umum</h3>
+                <label for="canvas-resolution">Resolusi Render:</label>
+                <select id="canvas-resolution">
+                    <option value="320x240">320x240 (Cepat)</option>
+                    <option value="400x300">400x300</option>
+                    <option value="500x375" selected>500x375 (Default)</option>
+                    <option value="600x450">600x450</option>
+                    <option value="800x600">800x600 (Lambat)</option>
+                </select>
+                <br><br>
+                <input type="checkbox" id="enable-shadows" checked>
+                <label for="enable-shadows" style="display: inline;">Aktifkan Bayangan</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bagian Helper Vektor -->
+    <script id="vector-helpers"> /* ... (Sama seperti sebelumnya, tidak perlu diulang) ... */ const vec3 = { create: (x = 0, y = 0, z = 0) => [x, y, z], clone: (a) => [a[0], a[1], a[2]], subtract: (out, a, b) => { out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; out[2] = a[2] - b[2]; return out; }, add: (out, a, b) => { out[0] = a[0] + b[0]; out[1] = a[1] + b[1]; out[2] = a[2] + b[2]; return out; }, scale: (out, a, s) => { out[0] = a[0] * s; out[1] = a[1] * s; out[2] = a[2] * s; return out; }, dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], lengthSq: (a) => a[0] * a[0] + a[1] * a[1] + a[2] * a[2], length: (a) => Math.sqrt(vec3.lengthSq(a)), normalize: (out, a) => { const len = vec3.length(a); if (len > 0.00001) { const invLen = 1 / len; out[0] = a[0] * invLen; out[1] = a[1] * invLen; out[2] = a[2] * invLen; } else { out[0] = 0; out[1] = 0; out[2] = 0; } return out; }, multiply: (out, a, b) => { out[0] = a[0] * b[0]; out[1] = a[1] * b[1]; out[2] = a[2] * b[2]; return out; },}; function hexToRgb01(hex) { let r = 0, g = 0, b = 0; if (hex.length == 4) { r = parseInt(hex[1] + hex[1], 16); g = parseInt(hex[2] + hex[2], 16); b = parseInt(hex[3] + hex[3], 16); } else if (hex.length == 7) { r = parseInt(hex[1] + hex[2], 16); g = parseInt(hex[3] + hex[4], 16); b = parseInt(hex[5] + hex[6], 16); } return [r / 255, g / 255, b / 255]; } function rgb01ToHex(rgb01) { const r = Math.max(0, Math.min(255, Math.round(rgb01[0] * 255))); const g = Math.max(0, Math.min(255, Math.round(rgb01[1] * 255))); const b = Math.max(0, Math.min(255, Math.round(rgb01[2] * 255))); return "#" + (r << 16 | g << 8 | b).toString(16).padStart(6, '0'); }</script>
+
+    <!-- Script Raytracer Utama -->
+    <script id="main-raytracer">
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('raytraceCanvas');
+            const ctx = canvas.getContext('2d');
+            const resolutionSelect = document.getElementById('canvas-resolution');
+            const shadowsCheckbox = document.getElementById('enable-shadows');
+            
+            let canvasWidth = 320; 
+            let canvasHeight = 240; // Default resolusi lebih rendah
+            let enableShadows = true;
+
+            let rayOrigin = vec3.create(); 
+            const backgroundColorRGB = [0.529, 0.808, 0.922]; 
+
+            // Array untuk sumber cahaya
+            const lights = [
+                {   // Lampu 1: Kiri-atas-depan
+                    id: 'light-0', name: 'Lampu 1',
+                    position: vec3.create(-130, -200, -200), // Relatif ke pusat canvas
+                    ambient: vec3.create(0.1, 0.1, 0.1), // Ambient kecil per lampu
+                    diffuse: vec3.create(0.7, 0.7, 0.6), // Agak kekuningan
+                    specular: vec3.create(0.8, 0.8, 0.8),
+                    dynamicPosition: vec3.create() // Untuk posisi absolut
+                },
+                {   // Lampu 2: Kanan-atas-belakang
+                    id: 'light-1', name: 'Lampu 2',
+                    position: vec3.create(220, -150, 50), // Relatif ke pusat canvas
+                    ambient: vec3.create(0.05, 0.05, 0.1), // Ambient biru kecil
+                    diffuse: vec3.create(0.4, 0.4, 0.6), // Agak kebiruan
+                    specular: vec3.create(0.6, 0.6, 0.7),
+                    dynamicPosition: vec3.create()
+                }
+            ];
+            const globalAmbient = vec3.create(0.1, 0.1, 0.1); // Ambient global tambahan
+            const SHADOW_EPSILON = 0.001;
+
+            function intersectSphere(sphere, rayOrigin, rayDirection) { /* ... (Sama) ... */ const Lvec = vec3.subtract(vec3.create(), sphere.center, rayOrigin); const tca = vec3.dot(Lvec, rayDirection); const d2 = vec3.dot(Lvec, Lvec) - tca * tca; if (d2 > sphere.radiusSq) return null; const thc = Math.sqrt(sphere.radiusSq - d2); let t0 = tca - thc; let t1 = tca + thc; if (t0 > t1) [t0, t1] = [t1, t0]; let tIntersect = -1; if (t0 > SHADOW_EPSILON) tIntersect = t0; else if (t1 > SHADOW_EPSILON) tIntersect = t1; else return null; const hitPoint = vec3.add(vec3.create(), rayOrigin, vec3.scale(vec3.create(), rayDirection, tIntersect)); const normal = vec3.normalize(vec3.create(), vec3.subtract(vec3.create(), hitPoint, sphere.center)); return { t: tIntersect, object: sphere, point: hitPoint, normal: normal };}
+            function intersectPlane(plane, rayOrigin, rayDirection) { /* ... (Sama) ... */ const denominator = vec3.dot(rayDirection, plane.normal); if (denominator > -SHADOW_EPSILON) return null; const P0_minus_O = vec3.subtract(vec3.create(), plane.pointOnPlane, rayOrigin); const t = vec3.dot(P0_minus_O, plane.normal) / denominator; if (t < SHADOW_EPSILON) return null; const hitPoint = vec3.add(vec3.create(), rayOrigin, vec3.scale(vec3.create(), rayDirection, t)); return { t: t, object: plane, point: hitPoint, normal: vec3.clone(plane.normal) };}
+
+            const floorYPosition = 350; // Naikkan sedikit lantai untuk scene yang lebih sempit
+            const sceneObjects = [
+                { id: 'sphere1', name: 'Bola Merah', type: 'sphere', 
+                  center: vec3.create(canvasWidth * 0.7, floorYPosition - 90, 120), 
+                  radius: 70, radiusSq: 70*70, color: [1.0,0.2,0.2], material: {ka:0.8,kd:0.9,ks:0.6,shininess:90}, 
+                  intersect: function(ro,rd){return intersectSphere(this,ro,rd);}},
+                { id: 'sphere2', name: 'Bola Biru', type: 'sphere', 
+                  center: vec3.create(canvasWidth * 1, floorYPosition - 120, 220), 
+                  radius: 90, radiusSq: 90*90, color: [0.2,0.2,1.0], material: {ka:0.7,kd:0.8,ks:0.7,shininess:110}, 
+                  intersect: function(ro,rd){return intersectSphere(this,ro,rd);}},
+                { id: 'floor', name: 'Lantai', type: 'plane', 
+                  pointOnPlane: vec3.create(0, floorYPosition, 0), 
+                  normal: vec3.normalize(vec3.create(),[0,-1,0]), color: [0.55,0.5,0.45], material: {ka:0.9,kd:0.9,ks:0.05,shininess:10}, 
+                  intersect: function(ro,rd){return intersectPlane(this,ro,rd);}}
+            ];
+            
+            function setPixel(imageData, x, y, colorRGB_0_1) { /* ... (Sama) ... */ const index = (y * imageData.width + x) * 4; imageData.data[index] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[0] * 255))); imageData.data[index + 1] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[1] * 255))); imageData.data[index + 2] = Math.max(0, Math.min(255, Math.floor(colorRGB_0_1[2] * 255))); imageData.data[index + 3] = 255;}
+            
+            function calculatePhongColor(hitInfo, currentRayOrigin) {
+                const N = hitInfo.normal;
+                const P = hitInfo.point;
+                const material = hitInfo.object.material;
+                const objectColor = hitInfo.object.color;
+
+                // Mulai dengan ambient global
+                let totalColor = vec3.multiply(vec3.create(), objectColor, globalAmbient);
+                vec3.scale(totalColor, totalColor, material.ka); // Terapkan Ka objek ke ambient global
+
+                for (const light of lights) {
+                    // Tambahkan ambient dari lampu ini (sudah dikalikan dengan Ka di atas atau bisa dikalikan di sini)
+                    // vec3.add(totalColor, totalColor, vec3.scale(vec3.create(), vec3.multiply(vec3.create(), objectColor, light.ambient), material.ka));
+                    // Alternatif: Biarkan ambient dari setiap lampu berkontribusi tanpa Ka objek, atau Ka sudah termasuk dalam definisi ambient lampu
+                    // Untuk kesederhanaan, mari kita tambahkan ambient lampu seperti ini:
+                    const lightAmbientContribution = vec3.multiply(vec3.create(), objectColor, light.ambient);
+                    vec3.scale(lightAmbientContribution, lightAmbientContribution, material.ka); // Ka objek diterapkan pada setiap ambient lampu
+                    vec3.add(totalColor, totalColor, lightAmbientContribution);
+
+
+                    const toLightUnnormalized = vec3.subtract(vec3.create(), light.dynamicPosition, P);
+                    const distanceToLight = vec3.length(toLightUnnormalized);
+                    const L = vec3.normalize(vec3.create(), toLightUnnormalized);
+                    const V = vec3.normalize(vec3.create(), vec3.subtract(vec3.create(), currentRayOrigin, P));
+                    const H = vec3.normalize(vec3.create(), vec3.add(vec3.create(), L, V));
+
+                    let inShadow = false;
+                    if (enableShadows) {
+                        const shadowRayOrigin = vec3.add(vec3.create(), P, vec3.scale(vec3.create(), N, SHADOW_EPSILON));
+                        for (const obj_s of sceneObjects) {
+                            const shadowHit = obj_s.intersect(shadowRayOrigin, L);
+                            if (shadowHit && shadowHit.t > SHADOW_EPSILON && shadowHit.t < distanceToLight) {
+                                inShadow = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!inShadow) {
+                        const dotNL = Math.max(0, vec3.dot(N, L));
+                        if (dotNL > 0) {
+                            const diffuseFromLight = vec3.multiply(vec3.create(), objectColor, light.diffuse);
+                            vec3.scale(diffuseFromLight, diffuseFromLight, material.kd * dotNL);
+                            vec3.add(totalColor, totalColor, diffuseFromLight);
+                        }
+                        
+                        const dotNH = Math.max(0, vec3.dot(N, H));
+                        if (dotNH > 0 && dotNL > 0) {
+                            const specularIntensity = Math.pow(dotNH, material.shininess);
+                            const specularFromLight = vec3.scale(vec3.create(), light.specular, material.ks * specularIntensity);
+                            vec3.add(totalColor, totalColor, specularFromLight);
+                        }
+                    }
+                }
+                
+                totalColor[0] = Math.min(totalColor[0], 1.0);
+                totalColor[1] = Math.min(totalColor[1], 1.0);
+                totalColor[2] = Math.min(totalColor[2], 1.0);
+                return totalColor;
+            }
+
+            let isRendering = false;
+            let renderRequestPending = false;
+
+            function renderScene() { 
+                if (isRendering) { renderRequestPending = true; return; }
+                isRendering = true;
+                enableShadows = shadowsCheckbox.checked;
+
+                // Update posisi absolut semua lampu
+                for (const light of lights) {
+                    light.dynamicPosition[0] = canvasWidth / 2 + light.position[0];
+                    light.dynamicPosition[1] = canvasHeight / 2 + light.position[1];
+                    light.dynamicPosition[2] = light.position[2];
+                }
+
+                const imageData = ctx.createImageData(canvasWidth, canvasHeight);
+                const tempRayDir = vec3.create(); const screenPoint = vec3.create();
+
+                for (let y = 0; y < canvasHeight; y++) { /* ... (loop render sama) ... */ for (let x = 0; x < canvasWidth; x++) { screenPoint[0] = x; screenPoint[1] = y; screenPoint[2] = 0; vec3.subtract(tempRayDir, screenPoint, rayOrigin); vec3.normalize(tempRayDir, tempRayDir); let closestHit = null; let min_t = Infinity; for (const object of sceneObjects) { const hitInfo = object.intersect(rayOrigin, tempRayDir); if (hitInfo && hitInfo.t < min_t && hitInfo.t > SHADOW_EPSILON) { min_t = hitInfo.t; closestHit = hitInfo; } } if (closestHit) { const phongColor = calculatePhongColor(closestHit, rayOrigin); setPixel(imageData, x, y, phongColor); } else { setPixel(imageData, x, y, backgroundColorRGB); } } }
+                ctx.putImageData(imageData, 0, 0);
+                isRendering = false;
+                if (renderRequestPending) { renderRequestPending = false; setTimeout(renderScene, 0); }
+            }
+            
+            function setCanvasSize() { 
+                const [w, h] = resolutionSelect.value.split('x').map(Number);
+                canvasWidth = w; canvasHeight = h;
+                canvas.width = canvasWidth; canvas.height = canvasHeight;
+                rayOrigin[0] = canvasWidth / 2;
+                rayOrigin[1] = canvasHeight / 2 - 30; // Naikkan kamera sedikit
+                rayOrigin[2] = -Math.max(canvasWidth, canvasHeight) * 0.7; // Majukan kamera sedikit / FOV lebih lebar
+
+                updateSliderLimits();
+                updateUIFromState(); 
+                renderScene();
+            }
+            
+            function updateUIFromState() { // Menggabungkan update UI untuk bola dan lampu
+                sceneObjects.forEach(obj => {
+                    if (obj.type === 'sphere') {
+                        const xVal = document.getElementById(`${obj.id}-x-val`); const yVal = document.getElementById(`${obj.id}-y-val`); const zVal = document.getElementById(`${obj.id}-z-val`);
+                        if(xVal) xVal.textContent = Math.round(obj.center[0]); if(yVal) yVal.textContent = Math.round(obj.center[1]); if(zVal) zVal.textContent = Math.round(obj.center[2]);
+                        const xSlider = document.getElementById(`${obj.id}-x`); const ySlider = document.getElementById(`${obj.id}-y`); const zSlider = document.getElementById(`${obj.id}-z`);
+                        if(xSlider) xSlider.value = obj.center[0]; if(ySlider) ySlider.value = obj.center[1]; if(zSlider) zSlider.value = obj.center[2];
+                    }
+                });
+                lights.forEach(light => {
+                    const xVal = document.getElementById(`${light.id}-x-val`); const yVal = document.getElementById(`${light.id}-y-val`); const zVal = document.getElementById(`${light.id}-z-val`);
+                    if(xVal) xVal.textContent = Math.round(light.position[0]); if(yVal) yVal.textContent = Math.round(light.position[1]); if(zVal) zVal.textContent = Math.round(light.position[2]);
+                    const xSlider = document.getElementById(`${light.id}-x`); const ySlider = document.getElementById(`${light.id}-y`); const zSlider = document.getElementById(`${light.id}-z`);
+                    if(xSlider) xSlider.value = light.position[0]; if(ySlider) ySlider.value = light.position[1]; if(zSlider) zSlider.value = light.position[2];
+                });
+            }
+
+            function updateSliderLimits() {
+                 sceneObjects.forEach(obj => {
+                    if (obj.type === 'sphere') {
+                        const xSlider = document.getElementById(`${obj.id}-x`); const ySlider = document.getElementById(`${obj.id}-y`); const zSlider = document.getElementById(`${obj.id}-z`);
+                        if (xSlider) { xSlider.min = 0; xSlider.max = canvasWidth; }
+                        if (ySlider) { ySlider.min = 0; ySlider.max = floorYPosition + obj.radius + 50; } // Beri ruang lebih
+                        if (zSlider) { zSlider.min = -Math.max(canvasWidth,canvasHeight); zSlider.max = Math.max(canvasWidth, canvasHeight) * 1.5; }
+                    }
+                 });
+                 lights.forEach(light => {
+                    const lightXSlider = document.getElementById(`${light.id}-x`); const lightYSlider = document.getElementById(`${light.id}-y`); const lightZSlider = document.getElementById(`${light.id}-z`);
+                    if(lightXSlider) { lightXSlider.min = -canvasWidth * 1.5; lightXSlider.max = canvasWidth * 1.5; }
+                    if(lightYSlider) { lightYSlider.min = -canvasHeight * 1.5; lightYSlider.max = canvasHeight / 2; } 
+                    if(lightZSlider) { lightZSlider.min = -Math.max(canvasWidth, canvasHeight) * 2; lightZSlider.max = Math.max(canvasWidth, canvasHeight) * 1.5; }
+                 });
+            }
+
+            function createAllLightControls() {
+                const container = document.getElementById('lights-controls-container');
+                container.innerHTML = ''; // Bersihkan
+                lights.forEach(light => {
+                    const group = document.createElement('div');
+                    group.className = 'control-group';
+                    group.innerHTML = `<h3>${light.name}</h3>`;
+                    ['x', 'y', 'z'].forEach((axis, index) => {
+                        let label = document.createElement('label'); label.htmlFor = `${light.id}-${axis}`; label.textContent = `Posisi ${axis.toUpperCase()}: `;
+                        let output = document.createElement('output'); output.id = `${light.id}-${axis}-val`; output.textContent = Math.round(light.position[index]); label.appendChild(output); group.appendChild(label);
+                        let slider = document.createElement('input'); slider.type = 'range'; slider.id = `${light.id}-${axis}`;
+                        slider.value = light.position[index]; slider.step = 10; // Step lebih besar
+                        slider.oninput = (e) => { light.position[index] = parseFloat(e.target.value); output.textContent = Math.round(e.target.value); renderScene(); };
+                        group.appendChild(slider); group.appendChild(document.createElement('br'));
+                    });
+                    container.appendChild(group);
+                });
+            }
+
+            function createObjectControls() { /* ... (Sama, pastikan ID output dan slider unik) ... */ const controlsContainer = document.getElementById('object-controls'); controlsContainer.innerHTML = ''; sceneObjects.forEach((obj) => { if (obj.type !== 'sphere') return; const group = document.createElement('div'); group.className = 'control-group'; group.innerHTML = `<h3>${obj.name}</h3>`; ['x', 'y', 'z'].forEach((axis, index_axis) => { let label = document.createElement('label'); label.htmlFor = `${obj.id}-${axis}`; label.textContent = `Posisi ${axis.toUpperCase()}: `; let output = document.createElement('output'); output.id = `${obj.id}-${axis}-val`; output.textContent = Math.round(obj.center[index_axis]); label.appendChild(output); group.appendChild(label); let slider = document.createElement('input'); slider.type = 'range'; slider.id = `${obj.id}-${axis}`; slider.value = obj.center[index_axis]; slider.step = 1; slider.oninput = (e) => { obj.center[index_axis] = parseFloat(e.target.value); output.textContent = Math.round(e.target.value); renderScene(); }; group.appendChild(slider); }); let labelColor = document.createElement('label'); labelColor.htmlFor = `${obj.id}-color`; labelColor.textContent = `Warna: `; group.appendChild(labelColor); let colorPicker = document.createElement('input'); colorPicker.type = 'color'; colorPicker.id = `${obj.id}-color`; colorPicker.value = rgb01ToHex(obj.color); colorPicker.oninput = (e) => { obj.color = hexToRgb01(e.target.value); renderScene(); }; group.appendChild(colorPicker); controlsContainer.appendChild(group); });}
+            
+            resolutionSelect.addEventListener('change', setCanvasSize);
+            shadowsCheckbox.addEventListener('change', renderScene);
+            
+            createAllLightControls();
+            createObjectControls();
+            setCanvasSize();
+        });
+    </script>
+</body>
+</html>

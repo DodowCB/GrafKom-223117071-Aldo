@@ -26,9 +26,31 @@
             font-size: 14px;
             pointer-events: none;
         }
+        .back-button {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 8px 16px;
+            background-color: white;
+            color: #333;
+            text-decoration: none;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        .back-button:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
     </style>
+    <link rel="icon" href="../icon.jpg" type="image/x-icon">
+
 </head>
 <body>
+    <a href="../index.html" class="back-button">← Back to Projects</a>
     <canvas id="webgl-canvas"></canvas>
     <div class="info">Rotasi: Klik dan geser | Zoom: Scroll</div>
     

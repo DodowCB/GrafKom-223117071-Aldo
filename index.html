@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrafKom Project Navigation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 14px;
+        }
+
+        h3 {
+            color: #333;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            color: #333;
+            font-size: 1.8rem;
+            margin: 40px 0 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+        
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .project-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .project-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+        }
+        
+        .card-image {
+            height: 160px;
+            background-color: #3498db;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .card-content {
+            padding: 20px;
+        }
+        
+        .card-title {
+            font-size: 1.25rem;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .card-description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        .card-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+        }
+        
+        .card-link:hover {
+            background-color: #2980b9;
+        }
+        
+        footer {
+            margin-top: 50px;
+            text-align: center;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .project-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+    <link rel="icon" href="icon.jpg" type="image/x-icon">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>GrafKom Projects Navigation</h1>
+            <h3>Adeltrudo Donal - 223117071</h3>
+            <p class="subtitle">Computer Graphics - Semester 4</p>
+        </header>
+        
+        <!-- Section 1: Tugas Minggu 10 - Ray Tracing -->
+        <h2 class="section-title">Tugas Minggu 10 - Ray Tracing</h2>
+        <div class="project-grid">
+            <!-- Ray Tracing with Plane -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #27ae60;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing with Plane</h3>
+                    <p class="card-description">
+                        Ray tracing that includes plane objects in addition to spheres.
+                    </p>
+                    <a href="ray_tracing_plane/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+
+            <!-- Ray Tracing with Shadows -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #9b59b6;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing with Shadows</h3>
+                    <p class="card-description">
+                        Advanced ray tracing implementation with shadow effects.
+                    </p>
+                    <a href="ray_tracing_shadow_two_light/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+
+            <!-- Ray Tracing with Reflection -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #f94c0e;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing with Reflection</h3>
+                    <p class="card-description">
+                        Advanced ray tracing implementation with reflection effects.
+                    </p>
+                    <a href="ray_tracing_reflection_two_light/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+
+            <!-- Ray Tracing with Refraction -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #3498db;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing with Refraction</h3>
+                    <p class="card-description">
+                        Advanced ray tracing implementation with refraction effects.
+                    </p>
+                    <a href="ray_tracing_refraction_two_light/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 2: Minggu 10 -->
+        <h2 class="section-title">Minggu 10</h2>
+        <div class="project-grid">
+            <!-- Ray Tracing Basic -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #e74c3c;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing Basic</h3>
+                    <p class="card-description">
+                        Simple ray tracing implementation showing a red sphere on a dark background.
+                    </p>
+                    <a href="ray_tracing/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+            
+            <!-- Ray Tracing with Lighting -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #f39c12;">
+                    3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Ray Tracing with Lighting</h3>
+                    <p class="card-description">
+                        Enhanced ray tracing with proper lighting calculations.
+                    </p>
+                    <a href="ray_tracing_lighting/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 3: Minggu 9 -->
+        <h2 class="section-title">Minggu 9</h2>
+        <div class="project-grid">
+            <!-- Project 1 -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #2980b9;">
+                    2D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Project 1</h3>
+                    <p class="card-description">
+                        First WebGL project - Basic 2D graphics implementations.
+                    </p>
+                    <a href="yang_pertama/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+            
+            <!-- Project 2 -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #16a085;">
+                    2D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Project 2</h3>
+                    <p class="card-description">
+                        Second project with intermediate 2D/3D graphics techniques.
+                    </p>
+                    <a href="yang_kedua/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+            
+            <!-- Project 3 -->
+            <div class="project-card">
+                <div class="card-image" style="background-color: #8e44ad;">
+                    2D/3D
+                </div>
+                <div class="card-content">
+                    <h3 class="card-title">Project 3</h3>
+                    <p class="card-description">
+                        Third project with advanced graphics implementations.
+                    </p>
+                    <a href="yang_ketiga/index.html" class="card-link">View Project</a>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Computer Graphics - 223117071 - Aldo</p>
+        </footer>
+    </div>
+</body>
+</html>
