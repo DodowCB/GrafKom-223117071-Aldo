@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modul 01: Hirarki</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #000000; } /* Latar belakang body hitam */
+        canvas { display: block; }
+        #camera-controls-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background: rgba(50,50,50,0.75);
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        #camera-controls-panel button {
+            margin-left: 8px;
+            padding: 6px 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #camera-controls-panel button:hover {
+            background-color: #0056b3;
+        }
+        #camera-controls-panel button:first-of-type {
+            margin-left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="camera-controls-panel">
+        Kamera:
+        <button id="perspectiveBtn">Perspektif</button>
+        <button id="orthographicBtn">Ortogonal</button>
+    </div>
+
+    <!-- Three.js library (CDN) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <!-- Main application script -->
+    <script type="module" src="js/main.js"></script>
+</body>
+</html>
