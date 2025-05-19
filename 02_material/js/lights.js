@@ -1,33 +1,37 @@
 // js/lights.js
 import * as THREE from 'three';
 
-function setupLights(scene) {
+let mainDirectionalLight = null; // Simpan referensi ke lampu utama
+
+function setupLights(scene, initialShadowState = true) {
     const lights = {};
 
     // Ambient light
-    lights.ambient = new THREE.AmbientLight(0xffffff, 0.5); // Cahaya ambient lebih lembut
+    lights.ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(lights.ambient);
 
     // Directional light untuk bayangan dan highlight phong
-    lights.directional = new THREE.DirectionalLight(0xffffff, 1.2); // Intensitas lebih kuat
-    lights.directional.position.set(8, 15, 10);
-    lights.directional.castShadow = true;
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    directionalLight.position.set(8, 15, 10);
+    directionalLight.castShadow = initialShadowState; // Set berdasarkan state awal
 
     // Konfigurasi bayangan
-    lights.directional.shadow.mapSize.width = 2048; // Resolusi bayangan lebih tinggi
-    lights.directional.shadow.mapSize.height = 2048;
-    lights.directional.shadow.camera.near = 0.5;
-    lights.directional.shadow.camera.far = 50;
+    directionalLight.shadow.mapSize.width = 1024;
+    directionalLight.shadow.mapSize.height = 1024;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 50;
     const shadowCamSize = 10;
-    lights.directional.shadow.camera.left = -shadowCamSize;
-    lights.directional.shadow.camera.right = shadowCamSize;
-    lights.directional.shadow.camera.top = shadowCamSize;
-    lights.directional.shadow.camera.bottom = -shadowCamSize;
-    lights.directional.shadow.bias = -0.0005; // Mengurangi shadow acne
+    directionalLight.shadow.camera.left = -shadowCamSize;
+    directionalLight.shadow.camera.right = shadowCamSize;
+    directionalLight.shadow.camera.top = shadowCamSize;
+    directionalLight.shadow.camera.bottom = -shadowCamSize;
+    directionalLight.shadow.bias = -0.0005;
 
-    scene.add(lights.directional);
+    scene.add(directionalLight);
+    mainDirectionalLight = directionalLight; // Simpan referensi
+    lights.directional = directionalLight;
 
-    // Helper untuk directional light (opsional, untuk debug)
+    // Helper (biarkan di-comment, bisa diaktifkan untuk debug)
     // const dirLightHelper = new THREE.DirectionalLightHelper(lights.directional, 1);
     // scene.add(dirLightHelper);
     // const shadowHelper = new THREE.CameraHelper(lights.directional.shadow.camera);
@@ -36,4 +40,10 @@ function setupLights(scene) {
     return lights;
 }
 
-export { setupLights };
+function toggleDirectionalLightShadow(castShadow) {
+    if (mainDirectionalLight) {
+        mainDirectionalLight.castShadow = castShadow;
+    }
+}
+
+export { setupLights, toggleDirectionalLightShadow, mainDirectionalLight };

@@ -9,6 +9,8 @@ function loadTexture(url) {
             url,
             (texture) => {
                 texture.colorSpace = THREE.SRGBColorSpace; // Penting untuk warna yang benar
+                texture.minFilter = THREE.LinearMipMapLinearFilter;
+                texture.magFilter = THREE.LinearFilter;
                 console.log(`Texture loaded successfully: ${url}`);
                 resolve(texture);
             },

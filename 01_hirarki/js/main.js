@@ -1,74 +1,48 @@
 // js/main.js
-import * as THREE from 'three';
-import { createScene } from './scene.js';
-import { createCameras, getActiveCamera, setActiveCameraType } from './camera.js';
-import { createRenderer } from './renderer.js';
-import { createCubeWithInternalSpheres } from './cube.js';
-import { createReferenceCubeHelpers, updateHelpers } from './helpers.js';
-import { setupResizeHandler } from './utils/resize.js';
-import { createControls, getControls } from './controls.js';
-import { setupCameraToggle } from './ui.js';
+import { setupScene, setupCamera, setupRenderer } from './sceneSetup.js';
+// No direct import of materials needed here, objects.js handles it
+// import { createLineRedMaterial } from './materials.js';
+import { createCubeEdges, createSphereLines } from './objects.js'; // Import new object functions
+import { setupHierarchy } from './hierarchy.js';
+import { startRenderLoop } from './renderLoop.js';
 
-// 1. Inisialisasi komponen dasar
-const scene = createScene();
-const renderer = createRenderer();
+// Get window dimensions
+const width = window.innerWidth;
+const height = window.innerHeight;
 
-// 2. Buat kamera-kamera
-createCameras(window.innerWidth / window.innerHeight);
-let activeCamera = setActiveCameraType('perspective', window.innerWidth / window.innerHeight);
-activeCamera.position.set(3.5, 2.5, 4.5); // Sesuaikan posisi kamera agar objek terlihat baik
+// 1. Setup Scene, Camera, Renderer
+const scene = setupScene();
+const camera = setupCamera(width, height);
+const renderer = setupRenderer(width, height);
 
-// 3. Buat objek "Hello Cube" dengan hirarkinya
-const { group: cubeContainerGroup, referenceCube } = createCubeWithInternalSpheres();
-scene.add(cubeContainerGroup);
+// Append renderer's canvas to the document body
+document.body.appendChild(renderer.domElement);
 
-// 4. Setup helpers untuk referenceCube
-const cubeHelpers = createReferenceCubeHelpers(referenceCube, scene);
+// 2. Create Objects (Now creating Line Segments instead of Meshes)
+const cube = createCubeEdges(); // This is our parent (LineSegments)
+const sphere = createSphereLines(); // This is our child (LineSegments)
 
-// Arahkan kamera dan kontrol ke pusat grup kontainer
-const boundingBox = new THREE.Box3().setFromObject(cubeContainerGroup);
-const center = new THREE.Vector3();
-boundingBox.getCenter(center);
-activeCamera.lookAt(center);
+// Add the parent object (LineSegments) to the scene
+scene.add(cube);
 
-// 5. Setup controls
-let controls = createControls(activeCamera, renderer.domElement);
-controls.target.copy(center);
-controls.enableZoom = true; // Pastikan zoom diaktifkan
-controls.update();
+// 3. Setup Hierarchy (add child LineSegments to parent LineSegments)
+setupHierarchy(cube, sphere);
 
-// 6. Setup UI (tombol ganti kamera)
-setupCameraToggle();
+// 4. Handle Window Resize
+function onWindowResize() {
+    const newWidth = window.innerWidth;
+    const newHeight = window.innerHeight;
 
-// 7. Setup resize handler
-setupResizeHandler(renderer);
+    camera.aspect = newWidth / newHeight;
+    camera.updateProjectionMatrix();
 
-// 8. Loop animasi
-const clock = new THREE.Clock();
-
-function animate() {
-    requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta();
-
-    // Animasi pada cubeContainerGroup (memutar seluruh grup)
-    if (cubeContainerGroup) {
-        cubeContainerGroup.rotation.x += 0.002;
-        cubeContainerGroup.rotation.y += 0.003;
-    }
-
-    // Update helper
-    updateHelpers(cubeHelpers);
-
-    // Update controls
-    const currentControls = getControls();
-    if (currentControls) {
-        currentControls.update(deltaTime);
-    }
-
-    renderer.render(scene, getActiveCamera());
+    renderer.setSize(newWidth, newHeight);
 }
 
-// Mulai animasi
-animate();
+window.addEventListener('resize', onWindowResize);
 
-console.log("Modul 01: Hirarki Hello Cube - Initialized");
+// 5. Start Render Loop
+// We pass the cube object (LineSegments) to the render loop so we can easily rotate the parent
+startRenderLoop(renderer, scene, camera, cube);
+
+console.log("Three.js scene initialized with wireframe cube-sphere hierarchy.");

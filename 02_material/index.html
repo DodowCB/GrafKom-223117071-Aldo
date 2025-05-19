@@ -6,8 +6,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modul 02: Material</title>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background-color: #222222; }
         canvas { display: block; }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.7); /* Sedikit lebih gelap agar kontras dengan tombol */
+            color: white;
+            border-radius: 5px;
+            font-size: 0.9em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        #info-panel button {
+            display: block; /* Agar tombol mengambil lebar penuh panel */
+            width: calc(100% - 16px); /* Sesuaikan padding tombol */
+            margin-top: 8px;
+            padding: 8px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.95em;
+        }
+        #info-panel button:hover {
+            background-color: #0056b3;
+        }
+        #info-panel button.active { /* Gaya untuk tombol aktif */
+            background-color: #28a745; /* Hijau */
+        }
+        #info-panel button.active:hover {
+            background-color: #1e7e34;
+        }
     </style>
 </head>
 <body>
@@ -17,6 +49,7 @@
         Sphere: Phong + Emissive + Texture (Shininess: 30)<br>
         Pyramid: Phong + Texture (Shininess: 90)<br>
         Plane: Basic + Texture
+        <button id="toggleShadowBtn">Toggle Shadows (ON)</button>
     </div>
 
     <!-- Three.js library (CDN) -->
